@@ -1,0 +1,24 @@
+name: collusionlab-gpu
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy
+  - pandas
+  - pyyaml
+  - pydantic
+  - tenacity
+  - python-dotenv
+  - streamlit
+  - plotly
+  - jupyterlab
+  - pytorch
+  - torchvision
+  - torchaudio
+  - pytorch-cuda
+  - pip
+  - pip:
+      - openai
+      - anthropic

@@ -1,0 +1,6 @@
+# Oversight variant (Phase 0 stub)
+extends: base.yaml
+oversight:
+  mode: audit-penalty
+  audit_probability: 0.25
+  penalty_factor: 0.5

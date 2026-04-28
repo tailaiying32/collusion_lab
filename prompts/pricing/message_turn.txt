@@ -1,0 +1,1 @@
+Communicate with other agents before choosing an action. Placeholder prompt stub.

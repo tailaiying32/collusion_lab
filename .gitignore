@@ -1,0 +1,16 @@
+# Environment and generated data
+.env
+data/raw/
+data/processed/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE / OS
+.vscode/
+.DS_Store
+Thumbs.db

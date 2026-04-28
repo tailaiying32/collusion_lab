@@ -1,0 +1,18 @@
+name: collusionlab
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy
+  - pandas
+  - pyyaml
+  - pydantic
+  - tenacity
+  - python-dotenv
+  - streamlit
+  - plotly
+  - jupyterlab
+  - pip
+  - pip:
+      - openai
+      - anthropic

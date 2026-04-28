@@ -1,0 +1,4 @@
+# Private communication variant (Phase 0 stub)
+extends: base.yaml
+communication:
+  mode: private
