@@ -73,8 +73,10 @@ class RunData:
 
     @property
     def memory_window(self) -> int | None:
-        agents = self.config.get("agents", [])
-        if agents:
+        agents = self.config.get("agents", {})
+        if isinstance(agents, dict):
+            return agents.get("memory_window")
+        if isinstance(agents, list) and agents:
             return agents[0].get("memory_window")
         return None
 

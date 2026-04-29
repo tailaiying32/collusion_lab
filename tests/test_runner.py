@@ -45,16 +45,13 @@ def _make_config(
     env = _base_env_block()
     env["n_rounds"] = n_rounds
     env["seed"] = seed
-    agents = [
-        {
-            "backend": "scripted",
-            "model": "scripted",
-            "memory_window": 3,
-            "temperature": 0.0,
-            "extra": {"replies": list(replies)},
-        }
-        for replies in replies_per_agent
-    ]
+    agents = {
+        "backend": "scripted",
+        "model": "scripted",
+        "memory_window": 3,
+        "temperature": 0.0,
+        "extra": {"replies_by_agent": [list(r) for r in replies_per_agent]},
+    }
     return ExperimentConfig(
         run_id=run_id,
         env_type="pricing",
@@ -87,20 +84,17 @@ def test_config_from_yaml_round_trips(tmp_path):
     assert cfg2.environment.demand_params == cfg.environment.demand_params
 
 
-def test_config_rejects_agent_count_mismatch(tmp_path):
+def test_config_accepts_single_shared_agent_for_any_n_agents(tmp_path):
     env = _base_env_block()
     env["n_agents"] = 3
-    with pytest.raises(ValueError, match="agents list length"):
-        ExperimentConfig(
-            run_id="x",
-            env_type="pricing",
-            environment=env,
-            agents=[
-                {"backend": "scripted", "model": "scripted", "memory_window": 1},
-                {"backend": "scripted", "model": "scripted", "memory_window": 1},
-            ],
-            prompt_dir="prompts/pricing",
-        )
+    cfg = ExperimentConfig(
+        run_id="x",
+        env_type="pricing",
+        environment=env,
+        agents={"backend": "scripted", "model": "scripted", "memory_window": 1},
+        prompt_dir="prompts/pricing",
+    )
+    assert cfg.environment.n_agents == 3
 
 
 def test_config_rejects_env_type_mismatch():
@@ -111,10 +105,7 @@ def test_config_rejects_env_type_mismatch():
             run_id="x",
             env_type="other",
             environment=pricing_cfg,
-            agents=[
-                {"backend": "scripted", "model": "scripted", "memory_window": 1},
-                {"backend": "scripted", "model": "scripted", "memory_window": 1},
-            ],
+            agents={"backend": "scripted", "model": "scripted", "memory_window": 1},
             prompt_dir="prompts/pricing",
         )
 

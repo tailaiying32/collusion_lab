@@ -18,11 +18,7 @@ environment:
   _calibration_note: 'calibrated by scripts/calibrate_calvano.py: continuous Nash=9.9702,
     monopoly=13.0302, scale=6.7690'
 agents:
-- backend: openai
-  model: gpt-4o-mini
-  memory_window: 5
-  temperature: 0.2
-- backend: openai
+  backend: openai
   model: gpt-4o-mini
   memory_window: 5
   temperature: 0.2

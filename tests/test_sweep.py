@@ -50,22 +50,13 @@ def _write_test_base_config(
         "run_id": None,
         "env_type": "pricing",
         "environment": env,
-        "agents": [
-            {
-                "backend": "scripted",
-                "model": "scripted",
-                "memory_window": 3,
-                "temperature": 0.0,
-                "extra": {"replies": list(replies)},
-            },
-            {
-                "backend": "scripted",
-                "model": "scripted",
-                "memory_window": 3,
-                "temperature": 0.0,
-                "extra": {"replies": list(replies)},
-            },
-        ],
+        "agents": {
+            "backend": "scripted",
+            "model": "scripted",
+            "memory_window": 3,
+            "temperature": 0.0,
+            "extra": {"replies_by_agent": [list(replies), list(replies)]},
+        },
         "prompt_dir": str(ROOT / "prompts" / "pricing"),
         "communication_mode": comm_mode,
         "output_dir": str(path.parent / "data"),
@@ -92,10 +83,9 @@ class TestApplyOverrides:
         assert result["environment"]["seed"] == 99
 
     def test_list_index(self):
-        data = {"agents": [{"temperature": 0.2}, {"temperature": 0.5}]}
-        result = apply_overrides(data, {"agents.0.temperature": 0.8})
-        assert result["agents"][0]["temperature"] == 0.8
-        assert result["agents"][1]["temperature"] == 0.5
+        data = {"agents": {"temperature": 0.2}}
+        result = apply_overrides(data, {"agents.temperature": 0.8})
+        assert result["agents"]["temperature"] == 0.8
 
     def test_rejects_unknown_path(self):
         data = {"environment": {"seed": 42}}
@@ -118,9 +108,9 @@ class TestApplyOverrides:
             apply_overrides(data, {"flag": True})
 
     def test_allows_int_where_float_expected(self):
-        data = {"agents": [{"temperature": 0.2}]}
-        result = apply_overrides(data, {"agents.0.temperature": 1})
-        assert result["agents"][0]["temperature"] == 1
+        data = {"agents": {"temperature": 0.2}}
+        result = apply_overrides(data, {"agents.temperature": 1})
+        assert result["agents"]["temperature"] == 1
 
     def test_allows_float_where_int_expected(self):
         data = {"environment": {"seed": 42}}
@@ -133,8 +123,8 @@ class TestApplyOverrides:
         assert result["run_id"] is None
 
     def test_rejects_out_of_range_index(self):
-        data = {"agents": [{"temp": 0.2}]}
-        with pytest.raises(ValueError, match="out of range"):
+        data = {"agents": {"temp": 0.2}}
+        with pytest.raises(ValueError, match="not list"):
             apply_overrides(data, {"agents.5.temp": 0.1})
 
     def test_rejects_index_on_non_list(self):
@@ -422,42 +412,14 @@ class TestSweepRunner:
         good_path = tmp_path / "good.yaml"
         good_path.write_text(yaml.safe_dump(config))
 
-        # Second config: empty replies → RuntimeError on first generate()
-        bad_config = dict(config)
-        bad_config["agents"] = [
-            {
-                "backend": "scripted", "model": "scripted",
-                "memory_window": 3, "temperature": 0.0,
-                "extra": {"replies": []},
-            },
-            {
-                "backend": "scripted", "model": "scripted",
-                "memory_window": 3, "temperature": 0.0,
-                "extra": {"replies": []},
-            },
-        ]
-        bad_path = tmp_path / "bad.yaml"
-        bad_path.write_text(yaml.safe_dump(bad_config))
-
-        # Build two separate configs and inject them via list mode.
-        # Since list mode overrides can't change agent.extra.replies (strict path
-        # validation requires the key to exist in base), we use two separate sweeps
-        # and merge results. Instead, test failure with an invalid env config.
-        env_bad = dict(env)
-        env_bad["n_agents"] = 99  # mismatch with agents list → validation error
-        bad_env_config = dict(config)
-        bad_env_config["environment"] = env_bad
-        bad_env_path = tmp_path / "bad_env.yaml"
-        bad_env_path.write_text(yaml.safe_dump(bad_env_config))
-
         # Use list mode with base=good, override seed for the good run; the bad
-        # run overrides n_agents to force a validation error.
+        # run overrides grid bounds to force a validation error.
         sc = SweepConfig(
             base_config=str(good_path),
             mode="list",
             overrides=[
                 {"environment.seed": 1},
-                {"environment.n_agents": 99},
+                {"environment.price_min": 99},
             ],
         )
         runner = SweepRunner(

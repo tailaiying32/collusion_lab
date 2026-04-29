@@ -82,16 +82,13 @@ def _validate_yaml(text: str) -> tuple[ExperimentConfig | None, str | None]:
         return None, "Top-level YAML must be a mapping."
     if isinstance(data.get("environment"), dict):
         data["environment"].pop("_calibration_note", None)
-    # Auto-sync agents list length to n_agents: pad by cloning last entry,
-    # or trim. This lets users change n_agents without manually editing the list.
-    env = data.get("environment") or {}
-    n_agents = env.get("n_agents")
+    # Backward compatibility: collapse identical list-style agent blocks into
+    # one shared config.
     agents = data.get("agents")
-    if isinstance(n_agents, int) and isinstance(agents, list) and agents:
-        while len(agents) < n_agents:
-            agents.append(dict(agents[-1]))
-        if len(agents) > n_agents:
-            data["agents"] = agents[:n_agents]
+    if isinstance(agents, list) and agents:
+        first = agents[0]
+        if all(a == first for a in agents[1:]):
+            data["agents"] = first
     try:
         return ExperimentConfig(**data), None
     except ValidationError as e:

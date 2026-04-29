@@ -16,14 +16,10 @@ environment:
   nash_price: 10
   monopoly_price: 13
 agents:
-  - backend: openai
-    model: gpt-4o-mini
-    memory_window: 5
-    temperature: 0.2
-  - backend: openai
-    model: gpt-4o-mini
-    memory_window: 5
-    temperature: 0.2
+  backend: openai
+  model: gpt-4o-mini
+  memory_window: 5
+  temperature: 0.2
 prompt_dir: prompts/pricing
 communication_mode: public
 oversight:

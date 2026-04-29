@@ -33,6 +33,7 @@ class LLMAgent:
         message_turn_template: str,
         comm_mode: CommMode,
         n_rounds: int,
+        strategic_guidance: str = "",
         max_action_attempts: int = 3,
     ) -> None:
         self.agent_id = agent_id
@@ -44,6 +45,7 @@ class LLMAgent:
         self.message_turn_template = message_turn_template
         self.comm_mode: CommMode = comm_mode
         self.n_rounds = n_rounds
+        self.strategic_guidance = strategic_guidance
         self.max_action_attempts = max_action_attempts
         self.fallback_events: list[dict] = []
         self.last_reasoning: str | None = None
@@ -65,6 +67,7 @@ class LLMAgent:
             n_rounds=self.n_rounds,
             window_size=self.memory.window_size,
             memory_context=self._memory_context(),
+            strategic_guidance=self.strategic_guidance,
         )
         messages = [
             {"role": "system", "content": self.system_prompt},
@@ -84,6 +87,7 @@ class LLMAgent:
             memory_context=self._memory_context(),
             recent_messages=self._format_received(messages_received),
             action_space_description=action_desc,
+            strategic_guidance=self.strategic_guidance,
         )
         conversation: list[dict[str, str]] = [
             {"role": "system", "content": self.system_prompt},

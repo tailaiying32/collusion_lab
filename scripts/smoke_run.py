@@ -57,6 +57,7 @@ def main() -> None:
             price_min=env_cfg["price_min"],
             price_max=env_cfg["price_max"],
             cost=env_cfg["demand_params"]["c"],
+            auditor_notice="",
         )
 
     # One ModelClient per agent so token totals are tracked separately.
@@ -70,15 +71,15 @@ def main() -> None:
                 model_client=client,
                 memory=AgentMemory(window_size=5),
                 system_prompt=system_prompt_for(i),
-                action_turn_template=action_template,
-                message_turn_template=message_template,
+                action_turn_template=action_template.replace("{strategic_guidance}", ""),
+                message_turn_template=message_template.replace("{strategic_guidance}", ""),
                 comm_mode="none",
                 n_rounds=N_ROUNDS,
             )
         )
 
     print(f"Running {N_ROUNDS} rounds, {env_cfg['n_agents']} agents, model={MODEL}")
-    print(f"Nash price = {obs['nash_price']}, monopoly price = {obs['monopoly_price']}")
+    print(f"Nash price = {game._nash_price}, monopoly price = {game._monopoly_price}")
     print("-" * 60)
 
     for r in range(1, N_ROUNDS + 1):
