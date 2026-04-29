@@ -106,7 +106,9 @@ def _calibrated_config(**overrides) -> PricingConfig:
 def test_pricing_game_step_at_nash_gives_expected_profits():
     cfg = _calibrated_config()
     game = PricingGame(cfg)
-    game.reset(seed=42)
+    reset_obs = game.reset(seed=42)
+    assert "nash_price" not in reset_obs
+    assert "monopoly_price" not in reset_obs
     nash = cfg.nash_price
     rewards, obs, done = game.step([nash, nash])
     # Profits are positive (price above marginal cost) and symmetric.
@@ -114,6 +116,8 @@ def test_pricing_game_step_at_nash_gives_expected_profits():
     assert math.isclose(rewards[0], rewards[1], abs_tol=1e-9)
     assert obs["prices"] == [nash, nash]
     assert obs["round"] == 1
+    assert "nash_price" not in obs
+    assert "monopoly_price" not in obs
     assert done is False  # 50 rounds in the calibrated config
     # Cumulative profits == per-round profits after one step.
     assert math.isclose(obs["cumulative_profits"][0], rewards[0])

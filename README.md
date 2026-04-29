@@ -162,18 +162,22 @@ Pre-built variant configs:
 
 ### Analysis UI
 
-Launch the Streamlit dashboard to replay trajectories, inspect transcripts, and compare sweep results:
+Launch the Streamlit dashboard to inspect experiment runs:
 
 ```bash
-streamlit run src/collusionlab/ui/app.py
+PYTHONPATH=src streamlit run src/collusionlab/ui/app.py
 ```
 
-The dashboard provides four pages:
+The dashboard provides four navigation pages (Analyze is currently implemented; others are placeholders):
 
-- **Run** — YAML config editor with live validation and per-round progress.
-- **Sweep** — parameter grid preview and background sweep execution.
-- **Analyze** — round-by-round trajectory, transcript, and metrics for a single run.
-- **Compare** — heatmaps and cross-run comparison for sweep results.
+- **Analyze** (available now) — single-run inspection with four tabs:
+  - **Config** — run metadata (elapsed time, tokens, cost) and full YAML config
+  - **Trajectory** — per-agent action and reward elevation charts with Nash/monopoly reference lines
+  - **Transcript** — round-by-round timeline with messages, audit events, and flags; supports filtering and keyword search
+  - **Metrics** — quick summary stats (mean spread, elevation, audit/flag counts)
+- **Run** (coming soon) — YAML config editor with live validation and per-round progress
+- **Sweep** (coming soon) — parameter grid preview and background sweep execution
+- **Compare** (coming soon) — heatmaps and cross-run comparison for sweep results
 
 ### Notebooks
 

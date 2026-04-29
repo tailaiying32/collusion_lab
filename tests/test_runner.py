@@ -160,6 +160,8 @@ def test_experiment_log_schema(tmp_path):
         assert rec["env_type"] == "pricing"
         assert rec["messages"] == []  # comm_mode none
         assert rec["audit_event"] is None  # null oversight
+        assert "nash_price" not in rec["observations"]
+        assert "monopoly_price" not in rec["observations"]
         sig = rec["trajectory_signals"]
         assert {"action_spread", "reward_elevation",
                 "explicit_collusion_flag", "behavior_collusion_flag",

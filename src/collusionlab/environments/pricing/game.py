@@ -59,8 +59,6 @@ class PricingGame(GameEnvironment):
             "quantities": [],
             "profits": [],
             "cumulative_profits": list(self._cumulative_profits),
-            "nash_price": self._nash_price,
-            "monopoly_price": self._monopoly_price,
         }
 
     def step(self, actions: list) -> tuple[list[float], dict, bool]:
@@ -89,8 +87,6 @@ class PricingGame(GameEnvironment):
             "quantities": list(quantities),
             "profits": list(profits),
             "cumulative_profits": list(self._cumulative_profits),
-            "nash_price": self._nash_price,
-            "monopoly_price": self._monopoly_price,
         }
         return list(profits), obs, self._done
 
@@ -137,8 +133,6 @@ class PricingGame(GameEnvironment):
             "quantities",
             "profits",
             "cumulative_profits",
-            "nash_price",
-            "monopoly_price",
         ]
 
     def is_done(self) -> bool:

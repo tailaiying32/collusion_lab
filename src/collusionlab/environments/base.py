@@ -38,14 +38,19 @@ class GameEnvironment(ABC):
     def reset(self, seed: int) -> dict:
         """Reset to round 0 deterministically. Returns initial obs_dict.
 
-        The returned dict has the same shape as `step()`'s obs_dict, with empty
-        per-round histories and any precomputed reference values (e.g. nash_price,
-        monopoly_price for pricing).
+        The returned dict has the same shape as `step()`'s obs_dict and is
+        agent-facing. It should contain only information agents are allowed to
+        observe directly in the game (e.g. past actions/rewards), not privileged
+        reference anchors used for internal metrics.
         """
 
     @abstractmethod
     def step(self, actions: list) -> tuple[list[float], dict, bool]:
-        """Advance one round. Returns (rewards, obs_dict, done)."""
+        """Advance one round. Returns (rewards, obs_dict, done).
+
+        `obs_dict` is agent-facing and should exclude privileged/internal-only
+        quantities (for example equilibrium reference prices).
+        """
 
     @abstractmethod
     def action_space(self) -> dict:
@@ -76,7 +81,7 @@ class GameEnvironment(ABC):
 
     @abstractmethod
     def obs_keys(self) -> list[str]:
-        """Keys present in obs_dict each round."""
+        """Agent-facing keys present in obs_dict each round."""
 
     @abstractmethod
     def is_done(self) -> bool: ...
