@@ -1,1 +1,11 @@
-Choose your next action according to the game rules. Placeholder prompt stub.
+Round {round_number} of {n_rounds}.
+
+History (most recent rounds, oldest first):
+{memory_context}
+
+Messages received this round:
+{recent_messages}
+
+Decide your price now. The valid action is: {action_space_description}.
+
+Reply with a single integer — the price. You may include a brief justification, but make sure exactly one integer in the valid range appears in your response.

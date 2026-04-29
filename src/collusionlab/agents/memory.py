@@ -1,0 +1,102 @@
+"""Bounded sliding-window memory for an LLM agent.
+
+Stores per-round records with a fixed env-agnostic schema (see `update()` docstring)
+and serializes them into compact text for prompt injection.
+
+Generic labels (`action`, `reward`) are used in the rendered context. The system
+prompt is responsible for telling the model what those mean in the current
+environment, which keeps memory rendering fully env-agnostic.
+"""
+
+from __future__ import annotations
+
+from collections import deque
+from typing import Any
+
+
+REQUIRED_KEYS: frozenset[str] = frozenset(
+    {
+        "round",
+        "own_action",
+        "all_actions",
+        "own_reward",
+        "messages_received",
+        "message_sent",
+    }
+)
+
+
+class AgentMemory:
+    def __init__(self, window_size: int) -> None:
+        if window_size < 1:
+            raise ValueError("window_size must be >= 1")
+        self.window_size = window_size
+        self._buf: deque[dict] = deque(maxlen=window_size)
+
+    def update(self, round_data: dict) -> None:
+        """Append a round and drop the oldest if over window.
+
+        `round_data` keys (exact, env-agnostic):
+            round: int
+            own_action: any
+            all_actions: list  -- every agent's action that round, in agent_id order
+            own_reward: float  -- own reward only; rivals' rewards are private
+            messages_received: list[str]
+            message_sent: str | None
+        """
+        keys = set(round_data.keys())
+        missing = REQUIRED_KEYS - keys
+        extra = keys - REQUIRED_KEYS
+        if missing or extra:
+            raise ValueError(
+                f"round_data schema mismatch (missing={sorted(missing)}, "
+                f"extra={sorted(extra)})"
+            )
+        self._buf.append(dict(round_data))  # defensive copy
+
+    def __len__(self) -> int:
+        return len(self._buf)
+
+    def records(self) -> list[dict]:
+        return list(self._buf)
+
+    def to_prompt_context(self) -> str:
+        """Render memory as compact human-readable text for prompt injection.
+
+        Returns the empty string when memory is empty (round 1, before any step).
+        Format per round:
+
+            Round {n}: your action={a}, all actions={...}, your reward={r:.4f}
+              you said: "..."   (omitted if None)
+              you received: "..." | "..."   (omitted if empty)
+        """
+        if not self._buf:
+            return ""
+        lines: list[str] = []
+        for r in self._buf:
+            head = (
+                f"Round {r['round']}: your action={_fmt(r['own_action'])}, "
+                f"all actions={_fmt_list(r['all_actions'])}, "
+                f"your reward={_fmt_reward(r['own_reward'])}"
+            )
+            lines.append(head)
+            if r["message_sent"] is not None:
+                lines.append(f'  you said: "{r["message_sent"]}"')
+            if r["messages_received"]:
+                joined = " | ".join(f'"{m}"' for m in r["messages_received"])
+                lines.append(f"  you received: {joined}")
+        return "\n".join(lines)
+
+
+def _fmt(x: Any) -> str:
+    if isinstance(x, float):
+        return f"{x:.4f}"
+    return str(x)
+
+
+def _fmt_list(xs: list) -> str:
+    return "[" + ", ".join(_fmt(x) for x in xs) + "]"
+
+
+def _fmt_reward(x: float) -> str:
+    return f"{x:.4f}"

@@ -127,6 +127,9 @@ class PricingGame(GameEnvironment):
             )
         return self._validate_price(token)
 
+    def default_action(self) -> int:
+        return self._nash_price
+
     def obs_keys(self) -> list[str]:
         return [
             "round",

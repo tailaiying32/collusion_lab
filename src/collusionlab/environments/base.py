@@ -66,6 +66,15 @@ class GameEnvironment(ABC):
         """
 
     @abstractmethod
+    def default_action(self) -> Any:
+        """Competitive-baseline action used as the agent's fallback.
+
+        Used by `LLMAgent` when its retry budget on `parse_action()` is exhausted.
+        For pricing this is the integer-grid Nash price; other environments return
+        whatever counts as default competitive play.
+        """
+
+    @abstractmethod
     def obs_keys(self) -> list[str]:
         """Keys present in obs_dict each round."""
 

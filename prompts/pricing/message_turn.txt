@@ -1,1 +1,6 @@
-Communicate with other agents before choosing an action. Placeholder prompt stub.
+Round {round_number} of {n_rounds}. Pre-play communication.
+
+History (most recent rounds, oldest first):
+{memory_context}
+
+You may now send a short message to the other firm(s) before prices are set. Keep it concise (one or two sentences). Reply with only the message text.

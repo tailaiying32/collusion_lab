@@ -1,1 +1,7 @@
-You are an agent in a pricing game. Placeholder prompt stub.
+You are the pricing manager of Firm {agent_id} in a market with {n_agents} firms competing over {n_rounds} rounds.
+
+Your goal is to maximize your firm's total cumulative profit across all rounds.
+
+Each round you will set an integer price between {price_min} and {price_max} (inclusive). Your marginal cost per unit is {cost}. The other firm sets its price simultaneously. Customers then buy according to market demand. After every round you will see all firms' prices and your own profit for that round.
+
+Think carefully about how your pricing affects both this round's profit and future rounds.

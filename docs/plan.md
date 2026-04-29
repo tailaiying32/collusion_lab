@@ -160,6 +160,11 @@ class GameEnvironment:
         # (e.g. out-of-grid price, non-integer, unparseable). The LLMAgent's retry
         # loop in Phase 2.7 catches this exception and feeds the message back to the
         # model. Keeping parsing here means agent code stays environment-agnostic.
+    def default_action(self) -> any: ...
+        # competitive-baseline action used as the fallback when the agent's retry
+        # budget is exhausted. For pricing this is the integer-grid Nash price; for
+        # other environments it's whatever counts as "default competitive play."
+        # Owned by the environment so the agent layer stays generic.
     def obs_keys(self) -> list[str]: ...   # which observation keys agents receive each round
     def is_done(self) -> bool: ...
 ```
@@ -284,12 +289,24 @@ Location: `src/collusionlab/agents/model_client.py`
 
 ```python
 class ModelClient:
+    model_name: str          # e.g. "gpt-4o-mini"
+    input_tokens: int        # cumulative across all generate() calls
+    output_tokens: int
+
     def generate(self, messages: list[dict[str, str]], **kwargs) -> str: ...
+    def cost_estimate(self) -> float: ...
+        # USD using a hardcoded per-model price table in the backend module.
 ```
 
 - `messages` follows the standard `[{"role": ..., "content": ...}]` format.
 - All implementations wrap calls with `tenacity` retry + exponential backoff. Backoff config
   (max attempts, wait range) is exposed as constructor parameters with sensible defaults.
+- **Token accounting is a side effect.** Each `generate()` call increments
+  `input_tokens` and `output_tokens` on the client. `generate()` itself returns only the
+  text. The runner reads the cumulative counters and `cost_estimate()` once at end of run
+  to populate the manifest (Phase 3.3) — no per-call plumbing needed in the agent or runner.
+- The price table lives next to each backend (e.g.
+  `OPENAI_PRICES = {"gpt-4o-mini": {"input": 0.15e-6, "output": 0.60e-6}, ...}`).
 
 **2.2 `OpenAIModelClient` (primary)**
 
@@ -297,7 +314,8 @@ Location: `src/collusionlab/agents/backends/openai_client.py`
 
 - Uses the `openai` Python SDK.
 - Default model for V1: `gpt-4o-mini`.
-- Logs token usage per call for cost tracking.
+- Reads token counts from the SDK response and accumulates them on the client instance
+  per the contract above.
 
 **2.3 `AnthropicModelClient` (secondary)**
 
@@ -305,7 +323,7 @@ Location: `src/collusionlab/agents/backends/anthropic_client.py`
 
 - Uses the `anthropic` Python SDK.
 - Alternative backend for cross-model comparison runs.
-- Same retry wrapping and token logging.
+- Same retry wrapping and token-accumulation contract.
 
 **2.4 Backend registry**
 
@@ -319,11 +337,24 @@ instantiates the right one. The runner never imports a backend directly.
 Location: `src/collusionlab/agents/memory.py`
 
 - Fixed sliding window over past rounds.
-- Stores per round: round number, own action, all agents' actions (post-round), own reward, messages
-  received, message sent. Keys are environment-agnostic; the values are whatever the game provides.
+- Per-round record schema (env-agnostic, exact keys):
+
+  ```python
+  {
+      "round": int,
+      "own_action": Any,           # this agent's action that round
+      "all_actions": list,         # every agent's action (in agent_id order)
+      "own_reward": float,         # this agent's reward only — matches the
+                                   # "you see your own profit" framing of the
+                                   # system prompt; rivals' rewards are private
+      "messages_received": list[str],
+      "message_sent": str | None,  # None when communication mode is "none"
+  }
+  ```
 - Window size is a config parameter and a key experimental variable.
-- `to_prompt_context() → str` serializes memory into compact human-readable text for injection into
-  the agent prompt.
+- `to_prompt_context() → str` serializes memory into compact human-readable text. Uses the
+  generic labels `action` and `reward` (not `price`/`profit`) — the env-specific meaning is
+  established by the system prompt, which keeps memory rendering fully env-agnostic.
 - `update(round_data: dict)` appends a round and drops the oldest if over window.
 
 **2.6 Prompt templates**
@@ -348,22 +379,52 @@ Baseline pricing system prompt:
 
 Location: `src/collusionlab/agents/llm_agent.py`
 
-- Holds a `ModelClient`, `AgentMemory`, communication mode flag, and prompt templates.
-- `compose_message(obs: dict) → str | None` — pre-play turn. Returns `None` if comm mode is `none`.
-- `decide_action(obs: dict, messages: list[str]) → any` — action turn. Returns a parsed action.
-  Retries up to 3 times with an error-correction prompt if output is invalid; falls back to a
-  logged default (Nash price for pricing games, configurable per environment).
+- Holds a `ModelClient`, `AgentMemory`, communication mode flag, prompt templates, and a
+  reference to its `GameEnvironment` (used for `parse_action` and `default_action`).
+- `compose_message(obs: dict) → str | None` — pre-play turn. Returns `None` if comm mode is
+  `none`. The `obs` passed in is the **most recent obs available**: the obs returned by
+  `env.reset()` in round 1, and the obs returned by the previous `env.step()` thereafter.
+  This guarantees compose_message always has well-defined context (rivals' last actions,
+  own last reward) without the runner needing two code paths.
+- `decide_action(obs: dict, messages: list[str]) → any` — action turn. Returns a validated
+  action (the result of `env.parse_action`).
+
+  Retry loop:
+  1. Generate; try `env.parse_action(text)`. On success, return.
+  2. On `ValueError`, append a user-role message of the form
+     `"Your previous response could not be parsed: {error}. Please respond with only {action_space()['description']}."`
+     and call `generate()` again.
+  3. **Total of 3 attempts** (initial call + 2 retries). After the third failure, log a
+     fallback event (round, agent_id, all three raw outputs, all three error messages) and
+     return `env.default_action()`.
+  - Token usage from every attempt accumulates on the `ModelClient` per the Phase 2.1
+    contract, so manifest cost reflects retries.
+
+- Sequential within a round: when the runner has multiple agents, it calls `decide_action`
+  on each agent one after the other. This keeps runs reproducible from `seed` alone — no
+  thread-scheduling variance — and is adequate for the 2–3 agent regime. Parallelism
+  across runs (Phase 5) is what matters for throughput; within-round parallelism is not.
 - Environment-agnostic: receives and returns plain dicts/values. The action parsing logic is
-  provided by the environment (see `action_space()`) rather than hardcoded in the agent.
+  provided by the environment (see `action_space()`, `parse_action()`, `default_action()`)
+  rather than hardcoded in the agent.
 
 **2.8 Unit tests**
 
 Location: `tests/test_agents.py`
 
 - `AgentMemory` window truncates correctly at the configured size.
-- `AgentMemory.to_prompt_context()` includes exactly the expected rounds.
-- `LLMAgent.decide_action()` retries on invalid output and falls back to the Nash default.
+- `AgentMemory.update()` accepts the documented schema and rejects extra/missing keys.
+- `AgentMemory.to_prompt_context()` includes exactly the expected rounds and uses the
+  generic `action`/`reward` labels.
+- `LLMAgent.decide_action()` returns the parsed action when generation is valid on first
+  try, retries on invalid output (asserts that the error message is fed back as a user
+  message), and after 3 total attempts falls back to `env.default_action()` and emits a
+  fallback log event.
 - `LLMAgent.compose_message()` returns `None` when comm mode is `none`.
+- `compose_message()` receives the `reset()` obs in round 1 and the previous `step()` obs
+  thereafter (verified by stubbing the runner-side flow).
+- `ModelClient` accumulates `input_tokens` / `output_tokens` across calls; `cost_estimate()`
+  matches the per-model price table.
 - Both `OpenAIModelClient` and `AnthropicModelClient` can be instantiated and return a string
   from a stubbed API call (use `unittest.mock` to avoid real API calls in tests).
 
