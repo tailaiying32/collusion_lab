@@ -8,6 +8,7 @@ plain Python types so the runner can serialize round logs to JSONL directly.
 from __future__ import annotations
 
 import random
+import re
 
 from collusionlab.environments.base import GameEnvironment, register_environment
 from collusionlab.environments.pricing.config import PricingConfig
@@ -108,21 +109,15 @@ class PricingGame(GameEnvironment):
         text = str(raw).strip().strip(".,;:!?\"' \t\n")
         if not text:
             raise ValueError("empty action")
-        # Pick the first integer-looking token; tolerates verbose model output.
-        token = None
-        for piece in text.replace(",", " ").split():
-            piece = piece.strip(".,;:!?\"'")
-            try:
-                token = int(piece)
-                break
-            except ValueError:
-                continue
-        if token is None:
+        # The action prompt asks for reasoning first and a final price at the end.
+        # Parse the last standalone integer token to avoid grabbing history numbers.
+        int_tokens = [int(m.group(0)) for m in re.finditer(r"(?<!\w)-?\d+(?!\w)", text)]
+        if not int_tokens:
             raise ValueError(
                 f"could not parse an integer from {raw!r}; "
                 f"valid range is {self.config.price_min}..{self.config.price_max}"
             )
-        return self._validate_price(token)
+        return self._validate_price(int_tokens[-1])
 
     def default_action(self) -> int:
         return self._nash_price

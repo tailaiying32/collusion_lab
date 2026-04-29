@@ -171,6 +171,7 @@ def test_parse_action_accepts_well_formed_strings():
     assert game.parse_action("7.") == 7
     assert game.parse_action("My final price is 9.") == 9
     assert game.parse_action("Price: 12") == 12
+    assert game.parse_action("The other firm priced at 7 last round. I'll raise to 9.") == 9
 
 
 def test_parse_action_rejects_invalid_with_range_in_message():
