@@ -182,8 +182,10 @@ def _golden_section_min(
 class BertrandDemand(DemandModel):
     """Winner-take-all Bertrand: cheapest firm gets all of fixed demand Q.
 
-    Ties split evenly. Marginal cost `c` is symmetric. Nash price equals marginal
-    cost (the standard Bertrand paradox); monopoly is unbounded above without a
+    Ties split evenly. Marginal cost `c` is symmetric. `nash_price()` returns the
+    continuous Bertrand benchmark (= marginal cost), not a grid-constrained price;
+    `PricingGame` applies grid constraints when constructing default actions and
+    reward-elevation baselines. Monopoly is unbounded above without a
     reservation price, so we expose one as a parameter and treat it as the
     monopoly price (a single firm at the reservation price extracts all surplus).
     """

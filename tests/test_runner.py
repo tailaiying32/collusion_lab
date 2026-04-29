@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT / "src"))
 # Importing pricing registers the env; importing scripted_client registers the backend.
 from collusionlab.environments.pricing import PricingConfig, PricingGame  # noqa: F401
 import collusionlab.agents.backends.scripted_client  # noqa: F401  (registers "scripted")
+from collusionlab.environments.base import get_environment
 from collusionlab.runner.config import ExperimentConfig
 from collusionlab.runner.experiment import Experiment
 
@@ -288,3 +289,55 @@ def test_compute_signals_tracks_pre_and_post_penalty_elevation():
     assert signals["reward_elevation_pre_penalty"] == [1.0, 1.0]
     assert signals["reward_elevation_post_penalty"] == [0.4375, 0.4375]
     assert signals["reward_elevation"] == signals["reward_elevation_post_penalty"]
+
+
+def test_experiment_reuses_delivered_messages_for_memory(tmp_path, monkeypatch):
+    class CountingCommunication:
+        def __init__(self):
+            self.calls = 0
+
+        def collect_messages(self, agents, obs):
+            return [{"from": 1, "to": "all", "content": "hello"}]
+
+        def deliver_messages(self, agent_id, all_messages):
+            self.calls += 1
+            return [m["content"] for m in all_messages]
+
+    comm = CountingCommunication()
+    monkeypatch.setattr("collusionlab.runner.experiment.get_comm_handler", lambda mode: comm)
+    cfg = _make_config(
+        n_rounds=1,
+        output_dir=str(tmp_path),
+        replies_per_agent=[["8"], ["8"]],
+    )
+    Experiment(cfg).run()
+    assert comm.calls == 2  # one deliver per agent (not repeated in memory update)
+
+
+def test_auditor_notice_toggle_controls_system_prompt(tmp_path):
+    cfg = _make_config(
+        n_rounds=1,
+        output_dir=str(tmp_path),
+        replies_per_agent=[["8"], ["8"]],
+    )
+    cfg_with_notice = cfg.model_copy(
+        update={
+            "oversight": cfg.oversight.model_copy(
+                update={"mode": "audit-penalty", "include_auditor_notice": True}
+            )
+        }
+    )
+    env = get_environment(cfg_with_notice.environment)
+    agents_with_notice, _ = Experiment(cfg_with_notice)._build_agents(env)
+    assert "independent market regulator" in agents_with_notice[0].system_prompt.lower()
+
+    cfg_without_notice = cfg.model_copy(
+        update={
+            "oversight": cfg.oversight.model_copy(
+                update={"mode": "audit-penalty", "include_auditor_notice": False}
+            )
+        }
+    )
+    env = get_environment(cfg_without_notice.environment)
+    agents_without_notice, _ = Experiment(cfg_without_notice)._build_agents(env)
+    assert "independent market regulator" not in agents_without_notice[0].system_prompt.lower()

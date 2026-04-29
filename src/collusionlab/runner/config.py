@@ -50,6 +50,7 @@ _DEFAULT_KEYWORDS: list[str] = [
 
 class OversightConfig(BaseModel):
     mode: Literal["none", "audit-penalty"] = "none"
+    include_auditor_notice: bool = True
     audit_probability: float = 0.0
     penalty_factor: float = 1.0
 

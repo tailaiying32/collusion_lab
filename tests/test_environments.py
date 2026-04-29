@@ -189,10 +189,10 @@ def test_parse_action_accepts_well_formed_strings():
     game = PricingGame(cfg)
     assert game.parse_action("7") == 7
     assert game.parse_action("  7  ") == 7
-    assert game.parse_action("7.") == 7
-    assert game.parse_action("My final price is 9.") == 9
+    assert game.parse_action("PRICE: 7") == 7
+    assert game.parse_action("My final decision.\nPRICE: 9") == 9
     assert game.parse_action("Price: 12") == 12
-    assert game.parse_action("The other firm priced at 7 last round. I'll raise to 9.") == 9
+    assert game.parse_action("Round 5 had price 12.\nPRICE: 9") == 9
 
 
 def test_parse_action_rejects_invalid_with_range_in_message():
@@ -205,6 +205,8 @@ def test_parse_action_rejects_invalid_with_range_in_message():
         game.parse_action("definitely not a number")
     msg = str(ei.value)
     assert str(cfg.price_min) in msg and str(cfg.price_max) in msg
+    with pytest.raises(ValueError, match="PRICE: <int>"):
+        game.parse_action("The other firm priced at 7 last round. I'll raise to 9.")
     with pytest.raises(ValueError, match="out of grid"):
         game.parse_action("99")
     with pytest.raises(ValueError, match="out of grid"):

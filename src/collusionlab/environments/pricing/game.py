@@ -110,15 +110,22 @@ class PricingGame(GameEnvironment):
         text = str(raw).strip().strip(".,;:!?\"' \t\n")
         if not text:
             raise ValueError("empty action")
-        # The action prompt asks for reasoning first and a final price at the end.
-        # Parse the last standalone integer token to avoid grabbing history numbers.
-        int_tokens = [int(m.group(0)) for m in re.finditer(r"(?<!\w)-?\d+(?!\w)", text)]
-        if not int_tokens:
-            raise ValueError(
-                f"could not parse an integer from {raw!r}; "
-                f"valid range is {self.config.price_min}..{self.config.price_max}"
-            )
-        return self._validate_price(int_tokens[-1])
+        # Preferred format: an explicit final line "PRICE: <int>".
+        tagged = [
+            int(m.group(1))
+            for m in re.finditer(r"(?im)^\s*price\s*:\s*(-?\d+)\s*$", text)
+        ]
+        if tagged:
+            return self._validate_price(tagged[-1])
+
+        # Backward-compatible fallback for terse responses like "7".
+        if re.fullmatch(r"-?\d+", text):
+            return self._validate_price(int(text))
+
+        raise ValueError(
+            "could not parse action; expected final line 'PRICE: <int>' "
+            f"with valid range {self.config.price_min}..{self.config.price_max}"
+        )
 
     def default_action(self) -> int:
         return self._nash_price

@@ -10,4 +10,7 @@ Decide your price now. The valid action is: {action_space_description}.
 
 Anything you write here is private — it is not shared with the regulator, with the other firm, or with the game. Use it as your own internal notes.
 
-Briefly think through your decision in 1-2 short sentences, then state your price. Make sure exactly one integer in the valid range ({action_space_description}) appears in your response.
+Briefly think through your decision in 1-2 short sentences.
+Then put your final action on its own line in this exact format:
+PRICE: <integer>
+Use a valid integer in the range ({action_space_description}).
