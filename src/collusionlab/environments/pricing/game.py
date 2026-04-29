@@ -12,6 +12,7 @@ import random
 from collusionlab.environments.base import GameEnvironment, register_environment
 from collusionlab.environments.pricing.config import PricingConfig
 from collusionlab.environments.pricing.demand import DemandModel, get_demand_model
+from collusionlab.environments.pricing.signals import compute_pricing_signals
 
 
 class PricingGame(GameEnvironment):
@@ -147,6 +148,15 @@ class PricingGame(GameEnvironment):
             "price_max": self.config.price_max,
             "cost": self.demand.marginal_cost,
         }
+
+    def compute_extra_signals(
+        self,
+        actions: list,
+        rewards: list[float],
+        prev_actions: list | None,
+        round_idx: int,
+    ) -> dict:
+        return compute_pricing_signals(actions, prev_actions)
 
     def reward_elevation_baseline(self) -> tuple[float, float]:
         cost = self.demand.marginal_cost

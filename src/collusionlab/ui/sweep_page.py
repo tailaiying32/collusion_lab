@@ -13,6 +13,7 @@ import os
 import threading
 import time
 import traceback as tb_mod
+from hashlib import sha1
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,7 @@ import yaml
 from dotenv import load_dotenv
 from pydantic import ValidationError
 
+from collusionlab.runner.config import ExperimentConfig
 from collusionlab.runner.sweep import SweepConfig, SweepRunner
 
 load_dotenv()
@@ -31,6 +33,9 @@ STATE_KEY = "sweep_page_state"
 EDITOR_KEY = "sweep_page_yaml_editor"
 FILE_SELECT_KEY = "sweep_page_file_select"
 WORKERS_KEY = "sweep_page_max_workers"
+BASE_EDITOR_KEY = "sweep_page_base_yaml_editor"
+BASE_PATH_KEY = "sweep_page_base_path"
+BASE_FILE_SELECT_KEY = "sweep_page_base_file_select"
 CUSTOM_LABEL = "(custom)"
 
 PREVIEW_CAP = 50
@@ -73,6 +78,12 @@ def _list_sweep_files() -> list[Path]:
         p for p in CONFIGS_DIR.glob("*.yaml") if p not in set(sweep_files)
     )
     return sweep_files + other_files
+
+
+def _list_base_files() -> list[Path]:
+    if not CONFIGS_DIR.exists():
+        return []
+    return sorted(CONFIGS_DIR.glob("*.yaml"))
 
 
 def _validate_sweep_yaml(
@@ -186,6 +197,14 @@ def _on_file_change() -> None:
         )
 
 
+def _on_base_file_change() -> None:
+    sel = st.session_state.get(BASE_FILE_SELECT_KEY, CUSTOM_LABEL)
+    if sel != CUSTOM_LABEL:
+        path = CONFIGS_DIR / sel
+        st.session_state[BASE_PATH_KEY] = str(path)
+        st.session_state[BASE_EDITOR_KEY] = path.read_text(encoding="utf-8")
+
+
 def _render_editor() -> str:
     files = _list_sweep_files()
     file_labels = [CUSTOM_LABEL] + [p.name for p in files]
@@ -201,6 +220,72 @@ def _render_editor() -> str:
         height=340,
         key=EDITOR_KEY,
     )
+
+
+def _render_base_selector(default_path: Path | None) -> None:
+    files = _list_base_files()
+    file_labels = [CUSTOM_LABEL] + [p.name for p in files]
+    if BASE_FILE_SELECT_KEY not in st.session_state:
+        default_name = default_path.name if default_path and default_path.exists() else None
+        st.session_state[BASE_FILE_SELECT_KEY] = (
+            default_name if default_name in file_labels else (file_labels[1] if len(file_labels) > 1 else CUSTOM_LABEL)
+        )
+    st.selectbox(
+        "Load base config",
+        options=file_labels,
+        key=BASE_FILE_SELECT_KEY,
+        on_change=_on_base_file_change,
+        help="Pick a base experiment YAML from configs/ (or keep custom text).",
+    )
+
+
+def _sync_base_editor(base_path: Path) -> None:
+    """Load base config text into session state when source path changes."""
+    prev = st.session_state.get(BASE_PATH_KEY)
+    if prev == str(base_path) and BASE_EDITOR_KEY in st.session_state:
+        return
+    st.session_state[BASE_PATH_KEY] = str(base_path)
+    if base_path.exists():
+        st.session_state[BASE_EDITOR_KEY] = base_path.read_text(encoding="utf-8")
+    else:
+        st.session_state[BASE_EDITOR_KEY] = ""
+
+
+def _validate_base_yaml(text: str) -> tuple[str | None, dict | None]:
+    """Validate editable base config text for the sweep."""
+    if not text.strip():
+        return "Base config editor is empty.", None
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError as e:
+        return f"Base config YAML parse error: {e}", None
+    if not isinstance(data, dict):
+        return "Base config top-level YAML must be a mapping.", None
+    if isinstance(data.get("environment"), dict):
+        data["environment"].pop("_calibration_note", None)
+    try:
+        cfg = ExperimentConfig(**data)
+        return (
+            f"Base config valid — env `{cfg.env_type}`, "
+            f"{cfg.environment.n_agents} agents, "
+            f"{cfg.environment.n_rounds} rounds.",
+            data,
+        )
+    except ValidationError as e:
+        return f"Base config validation error:\n{e}", None
+    except Exception as e:
+        return f"Base config {type(e).__name__}: {e}", None
+
+
+def _materialize_ui_base_config(text: str) -> Path:
+    """Write edited base config to a stable temp file for this UI session."""
+    tmp_dir = Path("data/raw/_ui_tmp")
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    digest = sha1(text.encode("utf-8")).hexdigest()[:16]
+    path = tmp_dir / f"base_{digest}.yaml"
+    if not path.exists():
+        path.write_text(text, encoding="utf-8")
+    return path
 
 
 # ---------------------------------------------------------------------------
@@ -371,12 +456,40 @@ def render_sweep_page() -> None:
         f"base `{sweep_cfg.base_config}`."
     )
 
-    configs, expand_err = _try_expand(sweep_cfg)
+    base_path = Path(sweep_cfg.base_config)
+    _render_base_selector(base_path)
+    selected_base = st.session_state.get(BASE_FILE_SELECT_KEY, CUSTOM_LABEL)
+    if selected_base != CUSTOM_LABEL:
+        _sync_base_editor(CONFIGS_DIR / selected_base)
+    else:
+        _sync_base_editor(base_path)
+    st.subheader("Base Experiment Config")
+    st.caption("Edits here are applied to preview + launch for this sweep run.")
+    st.text_area(
+        "Base Config YAML",
+        height=260,
+        key=BASE_EDITOR_KEY,
+    )
+
+    base_msg, base_data = _validate_base_yaml(st.session_state.get(BASE_EDITOR_KEY, ""))
+    if base_data is None:
+        st.warning(base_msg)
+        return
+    st.success(base_msg)
+
+    effective_base_path = _materialize_ui_base_config(
+        st.session_state.get(BASE_EDITOR_KEY, "")
+    )
+    sweep_data = sweep_cfg.model_dump(mode="python")
+    sweep_data["base_config"] = str(effective_base_path)
+    effective_sweep_cfg = SweepConfig(**sweep_data)
+
+    configs, expand_err = _try_expand(effective_sweep_cfg)
     if expand_err:
         st.warning(expand_err)
         return
 
-    _render_grid_preview(sweep_cfg, configs)
+    _render_grid_preview(effective_sweep_cfg, configs)
 
     # Launch controls
     max_workers = st.number_input(
@@ -390,5 +503,5 @@ def render_sweep_page() -> None:
     )
 
     if st.button("Launch sweep", type="primary"):
-        _start_sweep(sweep_cfg, int(max_workers), len(configs))
+        _start_sweep(effective_sweep_cfg, int(max_workers), len(configs))
         st.rerun()

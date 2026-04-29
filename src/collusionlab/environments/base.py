@@ -94,6 +94,21 @@ class GameEnvironment(ABC):
         runner generic — it renders prompts without knowing which env is running.
         """
 
+    def compute_extra_signals(
+        self,
+        actions: list,
+        rewards: list[float],
+        prev_actions: list | None,
+        round_idx: int,
+    ) -> dict:
+        """Environment-specific per-round trajectory signals.
+
+        Called by the runner after computing the base signals.  Returned dict
+        is merged into ``trajectory_signals`` (append-only — must not
+        overwrite the base keys).  Default: no extra signals.
+        """
+        return {}
+
     def reward_elevation_baseline(self) -> tuple[float, float] | None:
         """Per-agent (low, high) reward anchors for normalized reward elevation.
 

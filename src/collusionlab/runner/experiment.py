@@ -72,6 +72,7 @@ class Experiment:
 
         obs = env.reset(cfg.environment.seed)
         cumulative_rewards = [0.0] * env.n_agents
+        prev_actions: list | None = None
         history: list[dict] = []
         n_rounds = cfg.environment.n_rounds
 
@@ -129,6 +130,11 @@ class Experiment:
                 signals = self._compute_signals(
                     actions, rewards, elevation_baseline, audit_event,
                 )
+                extra = env.compute_extra_signals(
+                    actions, rewards, prev_actions, round_idx,
+                )
+                signals.update(extra)
+                prev_actions = list(actions)
 
                 # (g) Write round log line.
                 line = {

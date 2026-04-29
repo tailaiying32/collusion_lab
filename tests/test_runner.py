@@ -165,7 +165,8 @@ def test_experiment_log_schema(tmp_path):
         sig = rec["trajectory_signals"]
         assert {"action_spread", "reward_elevation",
                 "explicit_collusion_flag", "behavior_collusion_flag",
-                "covert_coordination_flag", "hollow_coordination_flag"} == set(sig)
+                "covert_coordination_flag", "hollow_coordination_flag",
+                "price_follow_lag1"} == set(sig)
         assert sig["action_spread"] == abs(7 - 9)
         assert isinstance(sig["reward_elevation"], list)
         assert rec["reasoning"] == ["7", "9"]
