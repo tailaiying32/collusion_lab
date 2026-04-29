@@ -156,7 +156,8 @@ def render_trajectory_tab(rows: list[dict], manifest: dict):
 
     # --- Actions chart ---
     st.subheader("Actions Over Time")
-    action_cols = [c for c in df.columns if c.startswith("action_")]
+    # Filter for action_N where N is an integer, avoiding action_spread.
+    action_cols = sorted([c for c in df.columns if c.startswith("action_") and c[7:].isdigit()])
     fig_actions = go.Figure()
     for i, col in enumerate(action_cols):
         fig_actions.add_trace(go.Scatter(
