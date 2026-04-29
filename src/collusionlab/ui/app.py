@@ -42,12 +42,17 @@ st.set_page_config(
 
 st.sidebar.title("CollusionLab")
 
+_PAGES = ["Analyze", "Run", "Sweep", "Compare"]
+_nav_target = st.session_state.pop("_nav_target", None)
+_nav_index = _PAGES.index(_nav_target) if _nav_target in _PAGES else st.session_state.get("_nav_index", 0)
+
 page = st.sidebar.radio(
     "Navigation",
-    ["Analyze", "Run", "Sweep", "Compare"],
-    index=0,
+    _PAGES,
+    index=_nav_index,
     key="nav_page",
 )
+st.session_state["_nav_index"] = _PAGES.index(page)
 
 # ---------------------------------------------------------------------------
 # Placeholder pages

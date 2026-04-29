@@ -718,18 +718,39 @@ config to its output.
 Location: `src/collusionlab/runner/sweep.py`
 
 - `base_config`: path to a base YAML.
-- `overrides`: list of dicts specifying parameter paths and values to override.
+- `overrides`: depends on `mode`:
+  - Grid: `dict[str, list]` mapping dot-paths to lists of values (Cartesian product).
+  - List: `list[dict[str, Any]]` — each dict maps dot-paths to scalar values.
 - `mode: grid | list` — grid generates Cartesian product; list runs explicit pairs.
+
+Override syntax is **strict dot-path** (e.g. `environment.seed`, `agents.0.temperature`).
+Integer segments are interpreted as list indices. Unknown paths and type mismatches raise
+`ValueError` immediately at expansion time. `int` ↔ `float` is allowed; all other type
+changes are rejected. `None` overrides are always accepted.
 
 **5.2 `SweepRunner`**
 
 - Generates all `ExperimentConfig` instances from `SweepConfig`.
-- Assigns each a unique `run_id`.
+- Assigns each a unique `run_id` (UUID4).
 - `concurrent.futures.ProcessPoolExecutor` with configurable `--max-workers` (default: CPU count).
+  A `_init_worker_path` initializer propagates the parent process's `sys.path` to spawned workers,
+  so the sweep works even when the package is not pip-installed (Windows spawn-safe).
 - Each worker: load config → run experiment → return manifest path.
+- **Failure policy: continue-on-error.** A failed run is recorded as `status: "failed"` with the
+  error message; remaining runs execute normally.
 - Progress logged to stdout: run_id, status, elapsed time.
-- Saves `sweep_manifest.json` on completion: all configs, result paths, aggregate timing.
+- Saves `{output_dir}/sweep_{sweep_id}/sweep_manifest.json` on completion.
 - Accepts optional `progress_callback(n_complete: int, n_total: int)` for UI integration.
+
+**`sweep_manifest.json` schema (operational scope)**:
+
+Top-level keys: `sweep_id`, `started_at`, `ended_at`, `elapsed_seconds`, `base_config`, `mode`,
+`max_workers`, `runs[]`.
+
+Per-run keys: `run_id`, `config`, `status` (`succeeded` | `failed`), `manifest_path` (null on
+failure), `error` (null on success), `started_at`, `ended_at`, `elapsed_seconds`.
+
+Results are sorted by `run_id` for deterministic manifest output regardless of completion order.
 
 **5.3 Rate limiting**
 
@@ -741,18 +762,37 @@ Free-tier APIs need fewer workers than paid tiers.
 
 Location: `tests/test_sweep.py`
 
+- Override helpers: strict dot-path resolution, type checking, deep copy isolation, rejection of
+  unknown paths / type mismatches / out-of-range indices.
+- `SweepConfig` validation: grid requires dict overrides, list requires list overrides, empty
+  overrides rejected, extra fields rejected.
 - `SweepConfig` in `grid` mode generates the correct Cartesian product of configs.
 - `SweepConfig` in `list` mode generates exactly the listed configs.
 - Each generated config has a unique `run_id`.
-- A small end-to-end sweep (2 configs × 2 seeds, using a mock `ModelClient`) completes without
+- Expansion order is deterministic for the same sweep input.
+- A small end-to-end sweep (2 configs, scripted backend) completes without
   error and produces one manifest per run plus a `sweep_manifest.json`.
-- `--max-workers 1` produces the same results as `--max-workers 4` (order-independence check).
+- Per-run manifests and JSONL logs are written and accessible.
+- Progress callback is invoked for each completed run.
+- Continue-on-error: one failing run does not prevent others from completing; the sweep manifest
+  records both `succeeded` and `failed` statuses.
+- `--max-workers 1` produces the same set of results as `--max-workers 2`
+  (**set-equivalence**: same config parameter values; completion order may differ).
+- Sweep manifest contains all required top-level and per-run keys.
+- CLI: `--sweep` and `--config` flags parse correctly and are mutually exclusive.
 
 **5.5 CLI**
 
 ```
 python -m collusionlab.runner.sweep --sweep configs/sweep_comm.yaml --max-workers 4
 ```
+
+Both `--sweep` (canonical) and `--config` (alias) are accepted; they are mutually exclusive.
+
+**5.6 Example sweep configs**
+
+- `configs/sweep_comm.yaml` — grid mode: 3 seeds × 3 communication modes = 9 runs.
+- `configs/sweep_list_example.yaml` — list mode: 3 explicit configurations.
 
 ---
 

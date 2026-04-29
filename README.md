@@ -23,7 +23,7 @@ The platform is organized into five modules.
 |---|---|---|
 | Environment engine | `src/collusionlab/environments/` | Repeated games with deterministic rules and seeded RNG |
 | Agent layer | `src/collusionlab/agents/` | LLM wrappers with prompts, bounded memory, and pluggable model clients |
-| Experiment runner | `src/collusionlab/runner/` | Single runs and parameter sweeps with parallel execution |
+| Experiment runner | `src/collusionlab/runner/` | Single runs (`experiment.py`) and parameter sweeps (`sweep.py`) with parallel execution |
 | Detection layer | `src/collusionlab/auditing/`, `src/collusionlab/metrics/` | Collusion, concealment, and oversight-response metrics |
 | Analysis UI | `src/collusionlab/ui/app.py` | Streamlit app for trajectory replay and cross-run comparison |
 
@@ -117,11 +117,20 @@ Output logs are written to `data/raw/` as JSONL files.
 
 ### Running a parameter sweep
 
+Define a sweep config (grid or list mode) and run it:
+
 ```bash
-python -m collusionlab.runner.sweep --config configs/base.yaml --max-workers 4
+PYTHONPATH=src python -m collusionlab.runner.sweep --sweep configs/sweep_comm.yaml --max-workers 4
 ```
 
-Results are collected in `data/processed/`.
+Runs execute in parallel via `ProcessPoolExecutor`. Each run writes its own `log.jsonl` and `manifest.json` under `data/raw/{run_id}/`. The sweep writes an aggregate `sweep_manifest.json` under `data/raw/sweep_{sweep_id}/` with per-run status, timing, and config snapshots. Failed runs are recorded (continue-on-error) without aborting the sweep.
+
+Example sweep configs:
+
+| Config | Mode | Description |
+|---|---|---|
+| `sweep_comm.yaml` | grid | 3 seeds x 3 communication modes (9 runs) |
+| `sweep_list_example.yaml` | list | 3 explicit configurations |
 
 ### Configuration
 

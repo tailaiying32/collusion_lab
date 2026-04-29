@@ -80,6 +80,16 @@ def _validate_yaml(text: str) -> tuple[ExperimentConfig | None, str | None]:
         return None, "Top-level YAML must be a mapping."
     if isinstance(data.get("environment"), dict):
         data["environment"].pop("_calibration_note", None)
+    # Auto-sync agents list length to n_agents: pad by cloning last entry,
+    # or trim. This lets users change n_agents without manually editing the list.
+    env = data.get("environment") or {}
+    n_agents = env.get("n_agents")
+    agents = data.get("agents")
+    if isinstance(n_agents, int) and isinstance(agents, list) and agents:
+        while len(agents) < n_agents:
+            agents.append(dict(agents[-1]))
+        if len(agents) > n_agents:
+            data["agents"] = agents[:n_agents]
     try:
         return ExperimentConfig(**data), None
     except ValidationError as e:
@@ -270,7 +280,7 @@ def render_run_page() -> None:
             _render_latest_reasoning(log_lines)
         col1, col2 = st.columns([1, 4])
         if col1.button("View in Analyze tab"):
-            st.session_state["nav_page"] = "Analyze"
+            st.session_state["_nav_target"] = "Analyze"
             st.rerun()
         if col2.button("Clear and configure another run"):
             st.session_state[STATE_KEY] = _default_state()
