@@ -22,7 +22,7 @@ from dotenv import load_dotenv
 from collusionlab.agents.llm_agent import LLMAgent
 from collusionlab.agents.memory import AgentMemory
 from collusionlab.agents.model_client import ModelClient, get_model_client
-from collusionlab.auditing.oversight_manager import OversightManager
+from collusionlab.auditing import OversightManager
 from collusionlab.environments.base import GameEnvironment, get_environment
 from collusionlab.environments.communication import (
     CommunicationHandler,
@@ -62,7 +62,9 @@ class Experiment:
         env = get_environment(cfg.environment)
         agents, model_clients = self._build_agents(env)
         comm = get_comm_handler(cfg.communication_mode)
-        oversight = OversightManager(**cfg.oversight.model_dump())
+        oversight = OversightManager.from_config(
+            cfg.oversight, seed=cfg.environment.seed, env=env,
+        )
 
         elevation_baseline = env.reward_elevation_baseline()
 
@@ -115,8 +117,10 @@ class Experiment:
                     cumulative_rewards[i] + rewards[i] for i in range(env.n_agents)
                 ]
 
-                # (f) Trajectory signals (Phase 3 subset).
-                signals = self._compute_signals(actions, rewards, elevation_baseline)
+                # (f) Trajectory signals.
+                signals = self._compute_signals(
+                    actions, rewards, elevation_baseline, audit_event,
+                )
 
                 # (g) Write round log line.
                 line = {
@@ -206,11 +210,11 @@ class Experiment:
         actions: list,
         rewards: list[float],
         elevation_baseline: tuple[float, float] | None,
+        audit_event: dict | None,
     ) -> dict:
         try:
             spread = max(actions) - min(actions)
         except TypeError:
-            # Non-numeric actions; skip the spread signal.
             spread = None
 
         if elevation_baseline is None:
@@ -228,6 +232,21 @@ class Experiment:
             signals["action_spread"] = spread
         if elevation is not None:
             signals["reward_elevation"] = elevation
+
+        explicit = False
+        behavior = False
+        if audit_event is not None and audit_event.get("audited"):
+            for result in audit_event.get("results", []):
+                if result.get("auditor") == "transcript" and result.get("flagged"):
+                    explicit = True
+                if result.get("auditor") == "behavior" and result.get("flagged"):
+                    behavior = True
+
+        signals["explicit_collusion_flag"] = explicit
+        signals["behavior_collusion_flag"] = behavior
+        signals["covert_coordination_flag"] = behavior and not explicit
+        signals["hollow_coordination_flag"] = explicit and not behavior
+
         return signals
 
     def _build_manifest(

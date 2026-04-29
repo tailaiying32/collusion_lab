@@ -1,4 +1,33 @@
-# Private communication variant (Phase 0 stub)
-extends: base.yaml
-communication:
-  mode: private
+run_id: null
+env_type: pricing
+environment:
+  env_type: pricing
+  n_agents: 2
+  n_rounds: 50
+  seed: 42
+  demand_model: calvano
+  price_min: 1
+  price_max: 15
+  demand_params:
+    a: 10.594000000000001
+    mu: 1.3242500000000001
+    a_0: 0.0
+    c: 5.297000000000001
+  nash_price: 8
+  monopoly_price: 10
+agents:
+  - backend: openai
+    model: gpt-4o-mini
+    memory_window: 5
+    temperature: 0.2
+  - backend: openai
+    model: gpt-4o-mini
+    memory_window: 5
+    temperature: 0.2
+prompt_dir: prompts/pricing
+communication_mode: private
+oversight:
+  mode: none
+  audit_probability: 0.0
+  penalty_factor: 1.0
+output_dir: data/raw

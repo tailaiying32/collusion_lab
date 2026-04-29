@@ -1,26 +1,117 @@
-"""Oversight manager.
+"""Oversight manager — auditor orchestration, probability rolling, penalties.
 
-Phase 3 ships a null implementation that never fires and never penalizes; the
-runner writes `audit_event: null` on every line. Phase 4 expands this with real
-auditors and probability rolling without the runner loop changing.
+Holds a list of ``Auditor`` instances.  Each round, rolls a seeded probability
+die to decide whether an audit occurs.  If it fires, runs all auditors and
+applies a reward penalty when any auditor flags the round.
 """
 
 from __future__ import annotations
 
+import random
+from typing import TYPE_CHECKING
+
+from collusionlab.auditing.base import Auditor
+from collusionlab.auditing.behavior_auditor import BehaviorAuditor
+from collusionlab.auditing.transcript_auditor import TranscriptAuditor
+
+if TYPE_CHECKING:
+    from collusionlab.environments.base import GameEnvironment
+    from collusionlab.runner.config import OversightConfig
+
 
 class OversightManager:
-    """Null oversight: no auditors, no penalties.
+    """Orchestrates per-round auditing and penalty application.
 
-    Constructor accepts arbitrary kwargs so Phase 3 configs can carry the
-    Phase-4 oversight fields (audit_probability, penalty_factor, ...) without the
-    runner needing two code paths.
+    Parameters
+    ----------
+    auditors:
+        List of ``Auditor`` instances to run when an audit fires.
+    audit_probability:
+        Per-round probability that an audit occurs (0 = never, 1 = always).
+    penalty_factor:
+        Multiplicative factor applied to rewards when any auditor flags.
+        1.0 = no penalty, 0.5 = half profit confiscated.
+    seed:
+        Seed for the audit probability RNG (reproducibility).
     """
 
-    def __init__(self, mode: str = "none", **_: object) -> None:
-        self.mode = mode
+    def __init__(
+        self,
+        auditors: list[Auditor] | None = None,
+        audit_probability: float = 0.0,
+        penalty_factor: float = 1.0,
+        seed: int = 0,
+    ) -> None:
+        self.auditors = auditors or []
+        self.audit_probability = audit_probability
+        self.penalty_factor = penalty_factor
+        self._rng = random.Random(seed)
+
+    @classmethod
+    def from_config(
+        cls,
+        config: "OversightConfig",
+        seed: int,
+        env: "GameEnvironment",
+    ) -> "OversightManager":
+        """Build an ``OversightManager`` from config + environment context."""
+        if config.mode == "none":
+            return cls(
+                auditors=[],
+                audit_probability=0.0,
+                penalty_factor=1.0,
+                seed=seed,
+            )
+
+        auditors: list[Auditor] = []
+
+        auditors.append(TranscriptAuditor(keywords=list(config.keywords)))
+
+        baseline = env.reward_elevation_baseline()
+        baseline_reward = baseline[0] if baseline else 0.0
+        ceiling_reward = baseline[1] if baseline else 1.0
+        auditors.append(BehaviorAuditor(
+            window=config.behavior_window,
+            threshold=config.behavior_threshold,
+            baseline_reward=baseline_reward,
+            ceiling_reward=ceiling_reward,
+            convergence_threshold=config.convergence_threshold,
+        ))
+
+        return cls(
+            auditors=auditors,
+            audit_probability=config.audit_probability,
+            penalty_factor=config.penalty_factor,
+            seed=seed,
+        )
 
     def check(self, round_log: dict, history: list[dict]) -> dict | None:
-        return None
+        """Run auditors for this round if the probability die fires.
 
-    def apply_penalty(self, rewards: list[float], event: dict | None) -> list[float]:
-        return list(rewards)
+        Returns an audit event dict for JSONL logging, or ``None`` if no
+        audit occurred this round.
+        """
+        if not self.auditors or self.audit_probability <= 0:
+            return None
+
+        if self._rng.random() > self.audit_probability:
+            return None
+
+        results = [auditor.audit(round_log) for auditor in self.auditors]
+        results = [r for r in results if r is not None]
+        flagged = any(r.get("flagged", False) for r in results)
+
+        return {
+            "audited": True,
+            "flagged": flagged,
+            "penalty_applied": flagged,
+            "results": results,
+        }
+
+    def apply_penalty(
+        self, rewards: list[float], event: dict | None
+    ) -> list[float]:
+        """Apply penalty to rewards if the audit event is flagged."""
+        if event is None or not event.get("penalty_applied", False):
+            return list(rewards)
+        return [r * self.penalty_factor for r in rewards]

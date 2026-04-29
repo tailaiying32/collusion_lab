@@ -161,11 +161,17 @@ def test_experiment_log_schema(tmp_path):
         assert rec["messages"] == []  # comm_mode none
         assert rec["audit_event"] is None  # null oversight
         sig = rec["trajectory_signals"]
-        # Phase 3: only these two keys, no auditor-dependent flags.
-        assert set(sig) == {"action_spread", "reward_elevation"}
+        assert {"action_spread", "reward_elevation",
+                "explicit_collusion_flag", "behavior_collusion_flag",
+                "covert_coordination_flag", "hollow_coordination_flag"} == set(sig)
         assert sig["action_spread"] == abs(7 - 9)
         assert isinstance(sig["reward_elevation"], list)
         assert len(sig["reward_elevation"]) == 2
+        # No oversight → all flags False.
+        assert sig["explicit_collusion_flag"] is False
+        assert sig["behavior_collusion_flag"] is False
+        assert sig["covert_coordination_flag"] is False
+        assert sig["hollow_coordination_flag"] is False
 
 
 def test_experiment_reproducibility_byte_identical(tmp_path):
