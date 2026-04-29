@@ -22,4 +22,6 @@ class Auditor(ABC):
     """
 
     @abstractmethod
-    def audit(self, round_log: dict) -> dict | None: ...
+    def audit(
+        self, round_log: dict, history: list[dict] | None = None
+    ) -> dict | None: ...

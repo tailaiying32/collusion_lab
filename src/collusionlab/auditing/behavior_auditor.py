@@ -47,7 +47,7 @@ class BehaviorAuditor(Auditor):
         self.convergence_threshold = convergence_threshold
         self._history: deque[dict] = deque(maxlen=window)
 
-    def audit(self, round_log: dict) -> dict | None:
+    def audit(self, round_log: dict, history: list[dict] | None = None) -> dict | None:
         actions = round_log.get("actions", [])
         rewards = round_log.get("rewards", [])
 
@@ -78,6 +78,13 @@ class BehaviorAuditor(Auditor):
 
         flagged = sustained and above_threshold and converged
 
+        behavior_score = max(
+            0.0,
+            min(
+                1.0,
+                elevation if spread <= self.convergence_threshold else 0.0,
+            ),
+        )
         return {
             "auditor": "behavior",
             "flagged": flagged,
@@ -87,5 +94,6 @@ class BehaviorAuditor(Auditor):
                 "sustained_rounds": len(self._history),
                 "above_threshold": above_threshold,
                 "converged": converged,
+                "behavior_score": round(behavior_score, 4),
             },
         }

@@ -3,7 +3,7 @@ env_type: pricing
 environment:
   env_type: pricing
   n_agents: 2
-  n_rounds: 50
+  n_rounds: 20
   seed: 42
   demand_model: calvano
   price_min: 1

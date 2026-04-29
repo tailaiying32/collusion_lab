@@ -241,6 +241,9 @@ class Experiment:
                     explicit = True
                 if result.get("auditor") == "behavior" and result.get("flagged"):
                     behavior = True
+            policy = audit_event.get("policy_decision", {})
+            if policy.get("flagged") and policy.get("explicit_evidence"):
+                explicit = True
 
         signals["explicit_collusion_flag"] = explicit
         signals["behavior_collusion_flag"] = behavior

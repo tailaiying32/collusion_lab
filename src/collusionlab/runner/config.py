@@ -57,6 +57,13 @@ class OversightConfig(BaseModel):
     behavior_window: int = Field(default=5, ge=1)
     behavior_threshold: float = 0.3
     convergence_threshold: float = 1.0
+    semantic_enabled: bool = True
+    semantic_threshold: float = 0.6
+    risk_weights: dict[str, float] = Field(
+        default_factory=lambda: {"kw": 0.3, "sem": 0.35, "beh": 0.2, "temp": 0.15}
+    )
+    risk_threshold: float = 0.7
+    behavior_gate_min: float = 0.2
 
     model_config = {"extra": "forbid"}
 

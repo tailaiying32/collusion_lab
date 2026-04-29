@@ -23,6 +23,8 @@ from collusionlab.auditing.base import Auditor
 from collusionlab.auditing.transcript_auditor import TranscriptAuditor
 from collusionlab.auditing.behavior_auditor import BehaviorAuditor
 from collusionlab.auditing.oversight_manager import OversightManager
+from collusionlab.auditing.risk_fusion_policy import RiskFusionPolicy
+from collusionlab.auditing.temporal_auditor import TemporalAuditor
 
 
 # ---------------------------------------------------------------------------
@@ -165,6 +167,18 @@ class TestTranscriptAuditor:
         assert result["flagged"] is False
         assert result["details"]["keywords_found"] == []
 
+    def test_semantic_hit_without_keyword(self):
+        auditor = TranscriptAuditor(keywords=["collude"], semantic_enabled=True)
+        log = {
+            "messages": [
+                {"from": 0, "to": "all", "content": "Let's maintain our strategy and maximize our profits together at 12."}
+            ]
+        }
+        result = auditor.audit(log)
+        assert result["flagged"] is True
+        assert result["details"]["keywords_found"] == []
+        assert result["details"]["semantic_score"] > 0
+
     def test_case_insensitive(self):
         auditor = TranscriptAuditor(keywords=["AGREE"])
         log = {"messages": [{"from": 0, "to": "all", "content": "I agree"}]}
@@ -279,6 +293,8 @@ class TestOversightManager:
         assert event is not None
         assert event["audited"] is True
         assert event["flagged"] is True
+        # Option A semantics: detection and enforcement are decoupled.
+        assert event["penalty_applied"] is False
 
     def test_probability_zero_never_audits(self):
         auditor = TranscriptAuditor(keywords=["agree"])
@@ -350,6 +366,58 @@ class TestOversightManager:
         mgr = OversightManager.from_config(config, seed=42, env=env)
         assert mgr.audit_probability == 0.25
         assert mgr.penalty_factor == 0.5
-        assert len(mgr.auditors) == 2
+        assert len(mgr.auditors) == 3
         assert isinstance(mgr.auditors[0], TranscriptAuditor)
         assert isinstance(mgr.auditors[1], BehaviorAuditor)
+        assert isinstance(mgr.auditors[2], TemporalAuditor)
+
+
+class TestTemporalAuditor:
+    def test_scores_linkage_when_previous_message_mentions_realized_price(self):
+        auditor = TemporalAuditor()
+        round_log = {"actions": [12, 12], "messages": []}
+        history = [
+            {
+                "messages": [{"from": 0, "to": "all", "content": "Let's set price at 12."}],
+                "actions": [11, 11],
+            }
+        ]
+        result = auditor.audit(round_log, history)
+        assert result["details"]["temporal_score"] == 1.0
+        assert 12 in result["details"]["matched_prices"]
+
+
+class TestRiskFusionPolicy:
+    def test_requires_explicit_and_behavior_for_flag(self):
+        policy = RiskFusionPolicy(threshold=0.7, behavior_gate_min=0.2)
+        decision = policy.evaluate([
+            {
+                "auditor": "transcript",
+                "details": {"keyword_score": 0.0, "semantic_score": 0.9},
+            },
+            {
+                "auditor": "behavior",
+                "details": {"behavior_score": 0.1},
+            },
+            {
+                "auditor": "temporal",
+                "details": {"temporal_score": 1.0},
+            },
+        ])
+        assert decision["flagged"] is False
+        assert decision["behavior_gate_passed"] is False
+
+
+class TestOptionASemantics:
+    def test_detection_can_be_true_without_penalty(self):
+        mgr = OversightManager(
+            auditors=[TranscriptAuditor(keywords=["agree"])],
+            audit_probability=1.0,
+            penalty_factor=0.5,
+            seed=42,
+        )
+        log = {"messages": [{"from": 0, "to": "all", "content": "we agree to hold price"}]}
+        event = mgr.check(log, [])
+        assert event is not None
+        assert event["flagged"] is True
+        assert event["penalty_applied"] is False

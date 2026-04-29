@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING
 
 from collusionlab.auditing.base import Auditor
 from collusionlab.auditing.behavior_auditor import BehaviorAuditor
+from collusionlab.auditing.risk_fusion_policy import RiskFusionPolicy
+from collusionlab.auditing.temporal_auditor import TemporalAuditor
 from collusionlab.auditing.transcript_auditor import TranscriptAuditor
 
 if TYPE_CHECKING:
@@ -40,11 +42,13 @@ class OversightManager:
         auditors: list[Auditor] | None = None,
         audit_probability: float = 0.0,
         penalty_factor: float = 1.0,
+        fusion_policy: RiskFusionPolicy | None = None,
         seed: int = 0,
     ) -> None:
         self.auditors = auditors or []
         self.audit_probability = audit_probability
         self.penalty_factor = penalty_factor
+        self.fusion_policy = fusion_policy or RiskFusionPolicy()
         self._rng = random.Random(seed)
 
     @classmethod
@@ -65,7 +69,13 @@ class OversightManager:
 
         auditors: list[Auditor] = []
 
-        auditors.append(TranscriptAuditor(keywords=list(config.keywords)))
+        auditors.append(
+            TranscriptAuditor(
+                keywords=list(config.keywords),
+                semantic_enabled=config.semantic_enabled,
+                semantic_threshold=config.semantic_threshold,
+            )
+        )
 
         baseline = env.reward_elevation_baseline()
         baseline_reward = baseline[0] if baseline else 0.0
@@ -77,11 +87,17 @@ class OversightManager:
             ceiling_reward=ceiling_reward,
             convergence_threshold=config.convergence_threshold,
         ))
+        auditors.append(TemporalAuditor())
 
         return cls(
             auditors=auditors,
             audit_probability=config.audit_probability,
             penalty_factor=config.penalty_factor,
+            fusion_policy=RiskFusionPolicy(
+                weights=config.risk_weights,
+                threshold=config.risk_threshold,
+                behavior_gate_min=config.behavior_gate_min,
+            ),
             seed=seed,
         )
 
@@ -97,15 +113,18 @@ class OversightManager:
         if self._rng.random() > self.audit_probability:
             return None
 
-        results = [auditor.audit(round_log) for auditor in self.auditors]
+        results = [auditor.audit(round_log, history) for auditor in self.auditors]
         results = [r for r in results if r is not None]
-        flagged = any(r.get("flagged", False) for r in results)
+        policy_decision = self.fusion_policy.evaluate(results)
+        detected_flag = any(r.get("flagged", False) for r in results)
+        enforcement_flag = policy_decision.get("flagged", False)
 
         return {
             "audited": True,
-            "flagged": flagged,
-            "penalty_applied": flagged,
+            "flagged": detected_flag,
+            "penalty_applied": enforcement_flag,
             "results": results,
+            "policy_decision": policy_decision,
         }
 
     def apply_penalty(
