@@ -23,6 +23,7 @@ REQUIRED_KEYS: frozenset[str] = frozenset(
         "penalty_applied",
         "messages_received",
         "message_sent",
+        "own_reasoning",
     }
 )
 
@@ -42,8 +43,10 @@ class AgentMemory:
             own_action: any
             all_actions: list  -- every agent's action that round, in agent_id order
             own_reward: float  -- own reward only; rivals' rewards are private
+            penalty_applied: bool
             messages_received: list[str]
             message_sent: str | None
+            own_reasoning: str | None  -- prior action-turn text (private to this agent)
         """
         keys = set(round_data.keys())
         missing = REQUIRED_KEYS - keys
@@ -70,6 +73,7 @@ class AgentMemory:
             Round {n}: your action={a}, all actions={...}, your reward={r:.4f}
               you said: "..."   (omitted if None)
               you received: "..." | "..."   (omitted if empty)
+              you reasoned: "..."   (omitted if None)
         """
         if not self._buf:
             return ""
@@ -87,6 +91,9 @@ class AgentMemory:
             if r["messages_received"]:
                 joined = " | ".join(f'"{m}"' for m in r["messages_received"])
                 lines.append(f"  you received: {joined}")
+            own_reasoning = r.get("own_reasoning")
+            if own_reasoning:
+                lines.append(f'  you reasoned: "{own_reasoning}"')
         return "\n".join(lines)
 
 

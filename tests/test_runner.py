@@ -155,7 +155,7 @@ def test_experiment_log_schema(tmp_path):
         assert set(rec) == {
             "run_id", "env_type", "round", "actions", "rewards",
             "cumulative_rewards", "observations", "messages",
-            "audit_event", "trajectory_signals",
+            "audit_event", "trajectory_signals", "reasoning",
         }
         assert rec["env_type"] == "pricing"
         assert rec["messages"] == []  # comm_mode none
@@ -168,6 +168,8 @@ def test_experiment_log_schema(tmp_path):
                 "covert_coordination_flag", "hollow_coordination_flag"} == set(sig)
         assert sig["action_spread"] == abs(7 - 9)
         assert isinstance(sig["reward_elevation"], list)
+        assert rec["reasoning"] == ["7", "9"]
+        assert len(rec["reasoning"]) == 2
         assert len(sig["reward_elevation"]) == 2
         # No oversight → all flags False.
         assert sig["explicit_collusion_flag"] is False

@@ -71,7 +71,8 @@ def _read_template(name: str) -> str:
 
 
 def _round(round_no: int, own_action=5, all_actions=None, own_reward=1.0,
-           penalty_applied=False, messages_received=None, message_sent=None) -> dict:
+           penalty_applied=False, messages_received=None, message_sent=None,
+           own_reasoning=None) -> dict:
     return {
         "round": round_no,
         "own_action": own_action,
@@ -80,6 +81,7 @@ def _round(round_no: int, own_action=5, all_actions=None, own_reward=1.0,
         "penalty_applied": penalty_applied,
         "messages_received": messages_received if messages_received is not None else [],
         "message_sent": message_sent,
+        "own_reasoning": own_reasoning,
     }
 
 
@@ -119,6 +121,13 @@ def test_memory_to_prompt_context_uses_generic_labels():
     assert 'you received: "hi"' in ctx
 
 
+def test_memory_to_prompt_context_includes_own_reasoning():
+    mem = AgentMemory(window_size=2)
+    mem.update(_round(1, own_reasoning="Hold steady given recent margins."))
+    ctx = mem.to_prompt_context()
+    assert 'you reasoned: "Hold steady given recent margins."' in ctx
+
+
 def test_memory_empty_context_is_empty_string():
     assert AgentMemory(window_size=3).to_prompt_context() == ""
 
@@ -151,6 +160,7 @@ def test_decide_action_first_attempt_success():
     obs = game.reset(seed=0)
     action = agent.decide_action(obs, messages_received=[])
     assert action == 7
+    assert agent.last_reasoning == "7"
     assert len(client.calls) == 1
     assert agent.fallback_events == []
 
@@ -167,6 +177,7 @@ def test_decide_action_retries_with_error_message_then_succeeds():
     second = client.calls[1]
     assert any("could not be parsed" in m["content"] for m in second)
     assert agent.fallback_events == []
+    assert agent.last_reasoning == "9"
 
 
 def test_decide_action_falls_back_to_default_after_three_failures():
@@ -181,6 +192,7 @@ def test_decide_action_falls_back_to_default_after_three_failures():
     assert event["agent_id"] == 0
     assert len(event["attempts"]) == 3
     assert all("error" in a for a in event["attempts"])
+    assert agent.last_reasoning == "definitely not"
 
 
 def test_compose_message_returns_none_when_comm_mode_none():

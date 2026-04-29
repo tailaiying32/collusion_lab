@@ -24,6 +24,7 @@ from collusionlab.ui.data_loading import (
     load_manifest,
     extract_trajectory_df,
 )
+from collusionlab.ui.run_page import render_run_page
 
 # ---------------------------------------------------------------------------
 # Page config
@@ -45,6 +46,7 @@ page = st.sidebar.radio(
     "Navigation",
     ["Analyze", "Run", "Sweep", "Compare"],
     index=0,
+    key="nav_page",
 )
 
 # ---------------------------------------------------------------------------
@@ -53,8 +55,7 @@ page = st.sidebar.radio(
 
 
 def page_run():
-    st.header("Run Experiment")
-    st.info("Coming soon: configure and launch single experiments with live progress.")
+    render_run_page()
 
 
 def page_sweep():
@@ -168,7 +169,7 @@ def render_trajectory_tab(rows: list[dict], manifest: dict):
         fig_actions.add_hline(y=monopoly, line_dash="dash", line_color="red",
                               annotation_text="Monopoly", annotation_position="top right")
     fig_actions.update_layout(xaxis_title="Round", yaxis_title="Action (Price)", height=350)
-    st.plotly_chart(fig_actions, use_container_width=True)
+    st.plotly_chart(fig_actions, width="stretch")
 
     # --- Reward elevation chart ---
     st.subheader("Reward Elevation Over Time")
@@ -182,7 +183,7 @@ def render_trajectory_tab(rows: list[dict], manifest: dict):
         fig_elev.add_hline(y=0, line_dash="dot", line_color="gray", annotation_text="Nash (0)")
         fig_elev.add_hline(y=1, line_dash="dot", line_color="gray", annotation_text="Monopoly (1)")
         fig_elev.update_layout(xaxis_title="Round", yaxis_title="Reward Elevation", height=350)
-        st.plotly_chart(fig_elev, use_container_width=True)
+        st.plotly_chart(fig_elev, width="stretch")
     else:
         st.info("No reward elevation data available.")
 
@@ -191,7 +192,7 @@ def render_trajectory_tab(rows: list[dict], manifest: dict):
     if "action_spread" in df.columns:
         fig_spread = px.line(df, x="round", y="action_spread", markers=True)
         fig_spread.update_layout(xaxis_title="Round", yaxis_title="Action Spread", height=300)
-        st.plotly_chart(fig_spread, use_container_width=True)
+        st.plotly_chart(fig_spread, width="stretch")
     else:
         st.info("No action spread data available.")
 
@@ -287,6 +288,25 @@ def render_transcript_tab(rows: list[dict]):
                                 f"**{keyword_filter}**"
                             )
                         st.markdown(f"**Agent {sender}:** {content}")
+
+            reasoning = row.get("reasoning") or []
+            if any(r for r in reasoning):
+                n_non_empty = sum(1 for r in reasoning if r)
+                with st.expander(
+                    f"Internal reasoning ({n_non_empty} of {len(reasoning)} agents)"
+                ):
+                    st.caption(
+                        "Private to each agent — not visible to other agents, "
+                        "the game, or the auditor."
+                    )
+                    for agent_id, text in enumerate(reasoning):
+                        st.markdown(f"**Agent {agent_id}:**")
+                        if text:
+                            st.markdown(f"> {text}")
+                        else:
+                            st.markdown(
+                                "_No reasoning captured — fallback action._"
+                            )
 
             # Audit event details
             if audit_event:

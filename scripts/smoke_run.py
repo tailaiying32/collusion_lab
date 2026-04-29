@@ -90,8 +90,10 @@ def main() -> None:
                 "own_action": own_action,
                 "all_actions": list(actions),
                 "own_reward": own_reward,
+                "penalty_applied": False,
                 "messages_received": [],
                 "message_sent": None,
+                "own_reasoning": a.last_reasoning,
             })
         print(f"round {r:2d}: actions={actions}  rewards={[round(x, 2) for x in rewards]}")
         if done:

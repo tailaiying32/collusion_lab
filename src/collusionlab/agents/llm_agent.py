@@ -46,6 +46,7 @@ class LLMAgent:
         self.n_rounds = n_rounds
         self.max_action_attempts = max_action_attempts
         self.fallback_events: list[dict] = []
+        self.last_reasoning: str | None = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -90,7 +91,9 @@ class LLMAgent:
         for _ in range(self.max_action_attempts):
             text = self.model_client.generate(conversation)
             try:
-                return self.env.parse_action(text)
+                action = self.env.parse_action(text)
+                self.last_reasoning = text
+                return action
             except ValueError as e:
                 attempts.append({"raw": text, "error": str(e)})
                 conversation.append({"role": "assistant", "content": text})
@@ -110,6 +113,7 @@ class LLMAgent:
             "attempts": attempts,
         }
         self.fallback_events.append(event)
+        self.last_reasoning = attempts[-1]["raw"] if attempts else None
         logger.warning(
             "agent %d fell back to default_action after %d failed attempts",
             self.agent_id,
