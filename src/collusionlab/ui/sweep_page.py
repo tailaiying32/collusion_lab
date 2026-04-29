@@ -38,7 +38,7 @@ BASE_PATH_KEY = "sweep_page_base_path"
 BASE_FILE_SELECT_KEY = "sweep_page_base_file_select"
 CUSTOM_LABEL = "(custom)"
 
-PREVIEW_CAP = 50
+PREVIEW_CAP = 100
 
 
 # ---------------------------------------------------------------------------
@@ -355,6 +355,12 @@ def _render_running(state: dict[str, Any]) -> None:
         col3.metric("Est. remaining (s)", f"{eta:.0f}")
     else:
         col3.metric("Est. remaining (s)", "—")
+    statuses = []
+    for i in range(n_total):
+        status = "succeeded/failed" if i < n_done else "queued/running"
+        statuses.append({"run": i + 1, "status": status})
+    st.subheader("Per-run Status")
+    st.dataframe(pd.DataFrame(statuses), width="stretch", hide_index=True)
 
 
 # ---------------------------------------------------------------------------
@@ -397,6 +403,8 @@ def _render_completed(state: dict[str, Any]) -> None:
 
     col1, col2 = st.columns([1, 4])
     if col1.button("View in Compare tab"):
+        if state.get("manifest_path"):
+            st.session_state["_selected_sweep_path"] = state["manifest_path"]
         st.session_state["_nav_target"] = "Compare"
         st.rerun()
     if col2.button("Clear and configure another sweep"):
@@ -496,7 +504,7 @@ def render_sweep_page() -> None:
         "Max workers",
         min_value=1,
         max_value=32,
-        value=min(os.cpu_count() or 1, 8),
+        value=min(os.cpu_count() or 1, 4),
         step=1,
         key=WORKERS_KEY,
         help="Number of parallel worker processes for the sweep.",

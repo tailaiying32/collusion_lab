@@ -12,10 +12,16 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from collusionlab.ui.data_loading import (
+    build_compare_df,
+    build_run_index,
+    build_transcript_df,
     extract_trajectory_df,
+    get_signal,
+    list_sweeps,
     list_runs,
     load_log_rows,
     load_manifest,
+    load_sweep_manifest,
 )
 
 
@@ -142,6 +148,51 @@ def test_list_runs_skips_corrupt_manifest(tmp_path):
     assert runs == []
 
 
+def test_list_sweeps_returns_empty_for_nonexistent_dir(tmp_path):
+    result = list_sweeps(tmp_path / "does_not_exist")
+    assert result == []
+
+
+def test_list_sweeps_discovers_sweeps_sorted_by_started_at(tmp_path):
+    s1 = tmp_path / "sweep_a"
+    s1.mkdir()
+    (s1 / "sweep_manifest.json").write_text(json.dumps({
+        "sweep_id": "a",
+        "started_at": "2026-04-28T01:00:00+00:00",
+        "mode": "grid",
+        "runs": [1],
+    }))
+
+    s2 = tmp_path / "sweep_b"
+    s2.mkdir()
+    (s2 / "sweep_manifest.json").write_text(json.dumps({
+        "sweep_id": "b",
+        "started_at": "2026-04-29T01:00:00+00:00",
+        "mode": "list",
+        "runs": [1, 2],
+    }))
+
+    sweeps = list_sweeps(tmp_path)
+    assert len(sweeps) == 2
+    assert sweeps[0]["sweep_id"] == "b"
+    assert sweeps[1]["sweep_id"] == "a"
+
+
+def test_load_sweep_manifest_success(tmp_path):
+    path = tmp_path / "sweep_manifest.json"
+    path.write_text(json.dumps({"sweep_id": "x"}))
+    data = load_sweep_manifest(path)
+    assert data is not None
+    assert data["sweep_id"] == "x"
+
+
+def test_load_sweep_manifest_missing_or_corrupt(tmp_path):
+    assert load_sweep_manifest(tmp_path / "missing.json") is None
+    bad = tmp_path / "bad.json"
+    bad.write_text("not json")
+    assert load_sweep_manifest(bad) is None
+
+
 # ---------------------------------------------------------------------------
 # load_manifest tests
 # ---------------------------------------------------------------------------
@@ -231,3 +282,45 @@ def test_extract_trajectory_df_handles_missing_signals():
     df = extract_trajectory_df(rows)
     assert len(df) == 1
     assert df.loc[0, "action_spread"] is None
+
+
+def test_get_signal_price_follow_fallback():
+    row = {"trajectory_signals": {"price_follow_lag1": 0.5}}
+    assert get_signal(row, "price_follow_indicator") == 0.5
+    assert get_signal(row, "missing", "x") == "x"
+
+
+def test_build_run_index_adds_label_and_date(tmp_path, sample_manifest):
+    run_dir = tmp_path / "test-run"
+    run_dir.mkdir()
+    (run_dir / "manifest.json").write_text(json.dumps(sample_manifest))
+    df = build_run_index(tmp_path)
+    assert len(df) == 1
+    assert "label" in df.columns
+    assert "env=pricing" in df.loc[0, "label"]
+    assert df.loc[0, "date"] is not None
+
+
+def test_build_transcript_df_derives_filters(sample_log_rows):
+    df = build_transcript_df(sample_log_rows, onset_round=2, transition_round=2)
+    assert list(df["round"]) == [1, 2]
+    assert df.loc[0, "post_onset"] == False
+    assert df.loc[1, "post_onset"] == True
+    assert df.loc[1, "flagged"] == True
+
+
+def test_build_compare_df_adds_concealment_gap():
+    import pandas as pd
+    df = build_compare_df(pd.DataFrame([{
+        "run_id": "r",
+        "n_rounds": 10,
+        "covert_flag_count": 3,
+        "hollow_flag_count": 1,
+        "onset_round": 2,
+        "transition_round": None,
+    }]))
+    assert df.loc[0, "mean_covert_rate"] == 0.3
+    assert df.loc[0, "mean_hollow_rate"] == 0.1
+    assert df.loc[0, "concealment_gap"] == pytest.approx(0.2)
+    assert df.loc[0, "has_onset"] == True
+    assert df.loc[0, "has_transition"] == False

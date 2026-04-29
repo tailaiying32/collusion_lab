@@ -64,6 +64,134 @@ def list_runs(raw_dir: Path | str) -> list[dict]:
     return runs
 
 
+def list_sweeps(raw_dir: Path | str) -> list[dict]:
+    """Scan raw_dir for sweep directories and return metadata (newest first)."""
+    raw_dir = Path(raw_dir)
+    sweeps: list[dict] = []
+    if not raw_dir.exists():
+        return sweeps
+
+    for sweep_manifest_path in raw_dir.glob("sweep_*/sweep_manifest.json"):
+        try:
+            sweep = json.loads(sweep_manifest_path.read_text(encoding="utf-8"))
+            sweeps.append({
+                "sweep_id": sweep.get("sweep_id", sweep_manifest_path.parent.name),
+                "sweep_dir": sweep_manifest_path.parent,
+                "path": sweep_manifest_path,
+                "started_at": sweep.get("started_at", ""),
+                "mode": sweep.get("mode", "unknown"),
+                "n_runs": len(sweep.get("runs", [])),
+            })
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning("Failed to read sweep manifest at %s: %s", sweep_manifest_path, e)
+            continue
+
+    sweeps.sort(key=lambda s: s["started_at"], reverse=True)
+    return sweeps
+
+
+def load_sweep_manifest(path: Path | str) -> dict | None:
+    """Load sweep_manifest.json. Returns None on failure."""
+    path = Path(path)
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning("Failed to load sweep manifest at %s: %s", path, e)
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Schema-safe adapters
+# ---------------------------------------------------------------------------
+
+
+def get_signal(row: dict, key: str, default: Any = None) -> Any:
+    """Read a trajectory signal with backward-compatible fallbacks."""
+    signals = row.get("trajectory_signals", {}) or {}
+    if key in signals:
+        return signals[key]
+    if key == "price_follow_indicator":
+        return signals.get("price_follow_lag1", default)
+    return default
+
+
+def build_run_index(raw_dir: Path | str) -> pd.DataFrame:
+    """Return normalized run selector metadata as a DataFrame."""
+    runs = list_runs(raw_dir)
+    records: list[dict[str, Any]] = []
+    for r in runs:
+        started = pd.to_datetime(r.get("start_time"), errors="coerce")
+        records.append({
+            **r,
+            "date": started.date() if not pd.isna(started) else None,
+            "label": (
+                f"run_id={r.get('run_id', '')[:8]}... | "
+                f"time={str(r.get('start_time', ''))[:19]} | "
+                f"env={r.get('env_type', 'unknown')} | "
+                f"comm={r.get('comm_mode', 'unknown')} | "
+                f"oversight={r.get('oversight_mode', 'unknown')}"
+            ),
+        })
+    return pd.DataFrame(records)
+
+
+def build_transcript_df(
+    rows: list[dict],
+    onset_round: int | None = None,
+    transition_round: int | None = None,
+) -> pd.DataFrame:
+    """Flatten transcript rows with derived filter columns."""
+    records: list[dict[str, Any]] = []
+    for row in rows:
+        round_num = row.get("round", 0)
+        audit_event = row.get("audit_event")
+        messages = row.get("messages", []) or []
+        records.append({
+            "round": round_num,
+            "actions": row.get("actions", []),
+            "rewards": row.get("rewards", []),
+            "messages": messages,
+            "message_text": "\n".join(m.get("content", "") for m in messages),
+            "audit_event": audit_event,
+            "audited": bool(audit_event and audit_event.get("audited")),
+            "flagged": bool(audit_event and audit_event.get("flagged")),
+            "penalized": bool(audit_event and audit_event.get("penalty_applied")),
+            "explicit": bool(get_signal(row, "explicit_collusion_flag", False)),
+            "behavior": bool(get_signal(row, "behavior_collusion_flag", False)),
+            "covert": bool(get_signal(row, "covert_coordination_flag", False)),
+            "hollow": bool(get_signal(row, "hollow_coordination_flag", False)),
+            "price_follow_indicator": get_signal(row, "price_follow_indicator"),
+            "post_onset": onset_round is not None and round_num >= onset_round,
+            "post_transition": transition_round is not None and round_num >= transition_round,
+            "raw": row,
+        })
+    return pd.DataFrame(records)
+
+
+def build_compare_df(sweep_df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize sweep metrics for the Compare run browser."""
+    if sweep_df.empty:
+        return sweep_df.copy()
+    df = sweep_df.copy()
+    if "mean_covert_rate" not in df.columns and "covert_flag_count" in df.columns:
+        denom = df.get("n_rounds", 1).replace(0, 1)
+        df["mean_covert_rate"] = df["covert_flag_count"] / denom
+    if "mean_hollow_rate" not in df.columns and "hollow_flag_count" in df.columns:
+        denom = df.get("n_rounds", 1).replace(0, 1)
+        df["mean_hollow_rate"] = df["hollow_flag_count"] / denom
+    if "concealment_gap" not in df.columns:
+        covert = df.get("mean_covert_rate", 0)
+        hollow = df.get("mean_hollow_rate", 0)
+        df["concealment_gap"] = covert - hollow
+    if "has_onset" not in df.columns and "onset_round" in df.columns:
+        df["has_onset"] = df["onset_round"].notna()
+    if "has_transition" not in df.columns and "transition_round" in df.columns:
+        df["has_transition"] = df["transition_round"].notna()
+    return df
+
+
 # ---------------------------------------------------------------------------
 # Manifest loading
 # ---------------------------------------------------------------------------

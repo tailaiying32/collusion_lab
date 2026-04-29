@@ -9,6 +9,7 @@ is needed.
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 import traceback
@@ -16,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import plotly.graph_objects as go
+import pandas as pd
 import streamlit as st
 import yaml
 from dotenv import load_dotenv
@@ -211,6 +213,29 @@ def _render_live_metrics(log_lines: list[dict], state: dict, cumulative_cost: fl
     col2.metric("Elapsed (s)", f"{elapsed:.1f}")
     col3.metric("Latest rewards", ", ".join(f"{r:.2f}" for r in rewards) or "—")
     col4.metric("Cumulative", ", ".join(f"{c:.1f}" for c in cum) or "—")
+    if cumulative_cost is not None:
+        st.caption(f"Token/cost estimate from completed manifest: ${cumulative_cost:.4f}")
+    else:
+        st.caption("Token and cost totals are finalized when the manifest is written at run completion.")
+
+
+def _render_recent_rounds(log_lines: list[dict], n: int = 5) -> None:
+    if not log_lines:
+        return
+    rows = []
+    for line in log_lines[-n:]:
+        signals = line.get("trajectory_signals", {})
+        elev = signals.get("reward_elevation", [])
+        rows.append({
+            "round": line.get("round"),
+            "actions": line.get("actions"),
+            "rewards": [round(r, 3) for r in line.get("rewards", [])],
+            "mean_elevation": round(sum(elev) / len(elev), 3) if elev else None,
+            "spread": signals.get("action_spread"),
+            "covert": signals.get("covert_coordination_flag", False),
+            "hollow": signals.get("hollow_coordination_flag", False),
+        })
+    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 
 
 def _render_latest_reasoning(log_lines: list[dict]) -> None:
@@ -238,6 +263,8 @@ def _render_running(state: dict, env_cfg: dict | None) -> None:
     if log_lines:
         _render_live_metrics(log_lines, state)
         _render_live_chart(log_lines, env_cfg)
+        st.subheader("Recent Rounds")
+        _render_recent_rounds(log_lines)
         _render_latest_reasoning(log_lines)
     else:
         st.caption("Waiting for first round to complete…")
@@ -274,12 +301,24 @@ def render_run_page() -> None:
     if state["manifest_path"]:
         st.success(f"Run complete — manifest at `{state['manifest_path']}`")
         log_lines = state.get("log_lines", [])
+        cost = None
+        run_id = None
+        try:
+            manifest = json.loads(Path(state["manifest_path"]).read_text(encoding="utf-8"))
+            cost = manifest.get("total_cost_estimate_usd")
+            run_id = manifest.get("run_id")
+        except Exception:
+            pass
         if log_lines:
-            _render_live_metrics(log_lines, state)
+            _render_live_metrics(log_lines, state, cumulative_cost=cost)
             _render_live_chart(log_lines, env_cfg)
+            st.subheader("Recent Rounds")
+            _render_recent_rounds(log_lines)
             _render_latest_reasoning(log_lines)
         col1, col2 = st.columns([1, 4])
         if col1.button("View in Analyze tab"):
+            if run_id:
+                st.session_state["_selected_run_id"] = run_id
             st.session_state["_nav_target"] = "Analyze"
             st.rerun()
         if col2.button("Clear and configure another run"):
