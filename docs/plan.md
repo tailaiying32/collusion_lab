@@ -144,9 +144,22 @@ class GameEnvironment:
     n_agents: int
 
     def reset(self, seed: int) -> dict: ...
+        # returns initial obs_dict (same shape as step()'s obs_dict, with empty histories
+        # and any precomputed reference values like nash_price / monopoly_price).
     def step(self, actions: list) -> tuple[list[float], dict, bool]: ...
         # returns (rewards, obs_dict, done)
-    def action_space(self) -> dict: ...    # describes valid actions for prompt construction
+    def action_space(self) -> dict: ...
+        # structured description of the valid action set, used by both prompt rendering
+        # and parse_action(). For pricing: {"type": "integer", "min": 1, "max": 15,
+        # "description": "integer price between 1 and 15 inclusive"}. Environments are
+        # free to add their own keys; the agent layer reads "description" for prompts
+        # and passes the whole dict back when parsing.
+    def parse_action(self, raw: str) -> any: ...
+        # parses a model's raw text output into a validated action of the type expected
+        # by step(). Raises ValueError with a human-readable message on invalid input
+        # (e.g. out-of-grid price, non-integer, unparseable). The LLMAgent's retry
+        # loop in Phase 2.7 catches this exception and feeds the message back to the
+        # model. Keeping parsing here means agent code stays environment-agnostic.
     def obs_keys(self) -> list[str]: ...   # which observation keys agents receive each round
     def is_done(self) -> bool: ...
 ```
@@ -197,17 +210,37 @@ Implements Calvano et al. (2020) logit demand:
   (a=2, mu=0.25, c=1) give Nash≈1.47 and monopoly≈1.92, which are unusable on an integer grid.
   Parameters are scaled uniformly (multiplying a, mu, c by the same constant preserves the demand
   structure and equilibrium ratios) until Nash and monopoly land at desired integer positions.
-  Calibrated defaults are determined numerically in Phase 1.8 and recorded in `configs/base.yaml`.
+  The recalibrated values are produced once in Phase 1.6 (calibration step) and frozen into
+  `configs/base.yaml`; this implementation just consumes them.
 - `nash_price()` and `monopoly_price()` solved numerically at instantiation and cached.
 
-**1.6 `BertrandDemand` stub**
+**1.6 Calvano parameter calibration**
+
+Location: `scripts/calibrate_calvano.py` (one-shot script, not part of the runtime package).
+
+A small numerical search that:
+- Sweeps a uniform scale factor over the published Calvano values (a=2, mu=0.25, c=1) and any
+  fine adjustment of `a_0`.
+- For each candidate, solves Nash and monopoly numerically on the discrete grid
+  `{price_min, ..., price_max}` (default 1..15).
+- Selects the parameter set that places Nash at ≈ 6–8 and monopoly at ≈ 10–11 with the largest
+  margin from neighboring grid points (so small numerical noise can't flip the equilibrium).
+- Writes the chosen `(a, mu, a_0, c)` plus the resulting `nash_price` and `monopoly_price` into
+  `configs/base.yaml` under the `environment` block, with a comment noting the script and date
+  that produced them.
+
+This is a Phase 1 task because Phase 1.9's tests assert against these values; running it before
+1.9 gives the tests a frozen ground truth. Re-running the script later (e.g. to change grid size)
+is a config-only operation — no code in `pricing/` needs to change.
+
+**1.7 `BertrandDemand` stub**
 
 Location: `src/collusionlab/environments/pricing/demand.py`
 
 Winner-take-all: cheapest firm gets fixed demand Q, ties split evenly. Present and tested from
 the start so it can be swapped in via config with no code changes.
 
-**1.7 `PricingGame`**
+**1.8 `PricingGame`**
 
 Location: `src/collusionlab/environments/pricing/game.py`
 
@@ -220,7 +253,7 @@ Implements `GameEnvironment`. Pricing-specific details:
   `prices`, `quantities`, `profits`, `cumulative_profits`, `nash_price`, `monopoly_price`.
 - These go into the JSONL under `observations` alongside the generic fields.
 
-**1.8 Unit tests**
+**1.9 Unit tests**
 
 Location: `tests/test_environments.py`
 
@@ -230,6 +263,11 @@ Location: `tests/test_environments.py`
 - Both demand models satisfy the `DemandModel` interface.
 - Price grid enforcement raises a clear error for out-of-grid prices.
 - `BertrandDemand` winner-take-all payoff logic is correct.
+- `PricingGame.parse_action()` accepts well-formed integer strings (with surrounding
+  whitespace / trailing punctuation), rejects out-of-grid values, non-integers, and empty
+  strings with `ValueError`, and the error message names the valid range.
+- `action_space()` returns a dict containing at minimum `type`, `min`, `max`, and a
+  human-readable `description` field.
 
 ---
 
@@ -948,7 +986,7 @@ the most informative rounds for each case.
 | Question | Blocks | Notes |
 |---|---|---|
 | Calvano parameter values | Phase 1 | Start with Calvano et al. (2020): a=2, mu=0.25, a_0=0, c=1 |
-| Price grid range | Phase 1 | **Resolved:** 15 integers (`price_min=1`, `price_max=15`). Calvano params recalibrated so Nash and monopoly land at useful integer positions (target: Nash ≈ 6–8, monopoly ≈ 10–11). Exact calibrated values determined numerically in Phase 1.8. Grid size is a pure config change. |
+| Price grid range | Phase 1 | **Resolved:** 15 integers (`price_min=1`, `price_max=15`). Calvano params recalibrated so Nash and monopoly land at useful integer positions (target: Nash ≈ 6–8, monopoly ≈ 10–11). Exact calibrated values produced by `scripts/calibrate_calvano.py` in Phase 1.6 and frozen into `configs/base.yaml`. Grid size is a pure config change. |
 | Default round count | Phase 3 | Suggest 50; 20 for calibration runs |
 | Penalty factor magnitude | Phase 4 | Needs calibration against profit scale from Phase 1 |
 | Audit probability for baseline oversight | Phase 4 | Suggest 0.2–0.3 per round |
