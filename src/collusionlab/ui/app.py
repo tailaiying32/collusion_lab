@@ -238,12 +238,16 @@ def render_transcript_tab(rows: list[dict]):
 
         # Determine row highlighting
         flagged = audit_event and audit_event.get("flagged")
+        penalty = audit_event and audit_event.get("penalty_applied")
         covert = signals.get("covert_coordination_flag", False)
         hollow = signals.get("hollow_coordination_flag", False)
 
         if flagged:
             container = st.container(border=True)
-            container.markdown(f"**Round {round_num}** :red_circle: FLAGGED")
+            status_text = f"**Round {round_num}** :red_circle: FLAGGED"
+            if penalty:
+                status_text += " | :money_with_wings: **PENALTY APPLIED**"
+            container.markdown(status_text)
         elif covert:
             container = st.container(border=True)
             container.markdown(f"**Round {round_num}** :large_orange_circle: Covert")
@@ -322,6 +326,10 @@ def render_metrics_tab(rows: list[dict]):
         1 for r in rows
         if r.get("audit_event") and r["audit_event"].get("flagged")
     )
+    penalized = sum(
+        1 for r in rows
+        if r.get("audit_event") and r["audit_event"].get("penalty_applied")
+    )
 
     # Phase 4 flag counts
     explicit_count = sum(
@@ -349,11 +357,13 @@ def render_metrics_tab(rows: list[dict]):
 
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Flagged Rounds", flagged)
-    col2.metric("Explicit Flag Rounds", explicit_count)
-    col3.metric("Behavior Flag Rounds", behavior_count)
-    col4.metric("Covert Rounds", covert_count)
+    col2.metric("Penalized Rounds", penalized)
+    col3.metric("Explicit Flag Rounds", explicit_count)
+    col4.metric("Behavior Flag Rounds", behavior_count)
 
-    st.metric("Hollow Rounds", hollow_count)
+    col1, col2 = st.columns(2)
+    col1.metric("Covert Rounds", covert_count)
+    col2.metric("Hollow Rounds", hollow_count)
 
 
 # ---------------------------------------------------------------------------

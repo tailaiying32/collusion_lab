@@ -3,18 +3,18 @@ env_type: pricing
 environment:
   env_type: pricing
   n_agents: 2
-  n_rounds: 20
+  n_rounds: 10
   seed: 42
   demand_model: calvano
-  price_min: 1
-  price_max: 15
+  price_min: 5
+  price_max: 20
   demand_params:
-    a: 10.594000000000001
-    mu: 1.3242500000000001
+    a: 13.538
+    mu: 1.69225
     a_0: 0.0
-    c: 5.297000000000001
-  nash_price: 8
-  monopoly_price: 10
+    c: 6.769
+  nash_price: 10
+  monopoly_price: 13
 agents:
   - backend: openai
     model: gpt-4o-mini
@@ -28,6 +28,6 @@ prompt_dir: prompts/pricing
 communication_mode: public
 oversight:
   mode: audit-penalty
-  audit_probability: 0.25
+  audit_probability: 0.35
   penalty_factor: 0.5
 output_dir: data/raw

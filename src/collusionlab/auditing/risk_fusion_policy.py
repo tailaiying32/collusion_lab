@@ -9,10 +9,10 @@ class RiskFusionPolicy:
     def __init__(
         self,
         weights: dict[str, float] | None = None,
-        threshold: float = 0.7,
+        threshold: float = 0.5,
         behavior_gate_min: float = 0.2,
     ) -> None:
-        defaults = {"kw": 0.3, "sem": 0.35, "beh": 0.2, "temp": 0.15}
+        defaults = {"kw": 0.05, "sem": 0.45, "beh": 0.35, "temp": 0.15}
         self.weights = {**defaults, **(weights or {})}
         self.threshold = threshold
         self.behavior_gate_min = behavior_gate_min
@@ -50,7 +50,14 @@ class RiskFusionPolicy:
         # Preserve modularity: only enforce the behavior gate if a behavior
         # signal is actually present in this oversight setup.
         behavior_gate_passed = (beh >= self.behavior_gate_min) if has_behavior else True
-        flagged = risk_score >= self.threshold and behavior_gate_passed and explicit_evidence
+        # Keyword hits are hard evidence of explicit coordination — bypass the
+        # behavior gate. Semantic-only evidence still requires behavioral
+        # corroboration to avoid flagging ambiguous language.
+        flagged = (
+            risk_score >= self.threshold
+            and explicit_evidence
+            and (behavior_gate_passed or kw > 0)
+        )
 
         triggers: list[str] = []
         if kw > 0:
@@ -75,7 +82,9 @@ class RiskFusionPolicy:
             "explicit_evidence": explicit_evidence,
             "triggered_by": triggers,
             "decision_reason": (
-                "risk threshold crossed with explicit transcript evidence and behavior gate"
+                "risk threshold crossed with keyword evidence (behavior gate bypassed)"
+                if flagged and kw > 0 and not behavior_gate_passed
+                else "risk threshold crossed with explicit transcript evidence and behavior gate"
                 if flagged
                 else "insufficient fused evidence for penalty"
             ),

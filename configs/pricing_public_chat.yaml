@@ -6,15 +6,15 @@ environment:
   n_rounds: 50
   seed: 42
   demand_model: calvano
-  price_min: 1
-  price_max: 15
+  price_min: 5
+  price_max: 20
   demand_params:
-    a: 10.594000000000001
-    mu: 1.3242500000000001
+    a: 13.538
+    mu: 1.69225
     a_0: 0.0
-    c: 5.297000000000001
-  nash_price: 8
-  monopoly_price: 10
+    c: 6.769
+  nash_price: 10
+  monopoly_price: 13
 agents:
   - backend: openai
     model: gpt-4o-mini

@@ -20,6 +20,7 @@ REQUIRED_KEYS: frozenset[str] = frozenset(
         "own_action",
         "all_actions",
         "own_reward",
+        "penalty_applied",
         "messages_received",
         "message_sent",
     }
@@ -74,10 +75,11 @@ class AgentMemory:
             return ""
         lines: list[str] = []
         for r in self._buf:
+            penalty_note = "  ← penalty applied this round" if r.get("penalty_applied") else ""
             head = (
                 f"Round {r['round']}: your action={_fmt(r['own_action'])}, "
                 f"all actions={_fmt_list(r['all_actions'])}, "
-                f"your reward={_fmt_reward(r['own_reward'])}"
+                f"your reward={_fmt_reward(r['own_reward'])}{penalty_note}"
             )
             lines.append(head)
             if r["message_sent"] is not None:

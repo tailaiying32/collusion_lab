@@ -249,12 +249,12 @@ def test_experiment_progress_callback_invoked(tmp_path):
 
 
 def test_experiment_reward_elevation_is_zero_at_nash(tmp_path):
-    # Both agents priced at Nash (=8 in calibrated config) → elevation should be 0.
+    # Both agents priced at Nash (=10 in calibrated config) → elevation should be 0.
     n_rounds = 2
     cfg = _make_config(
         n_rounds=n_rounds,
         output_dir=str(tmp_path),
-        replies_per_agent=[["8"] * n_rounds, ["8"] * n_rounds],
+        replies_per_agent=[["10"] * n_rounds, ["10"] * n_rounds],
     )
     Experiment(cfg).run()
     log_path = tmp_path / "test-run" / "log.jsonl"
