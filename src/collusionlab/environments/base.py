@@ -81,6 +81,24 @@ class GameEnvironment(ABC):
     @abstractmethod
     def is_done(self) -> bool: ...
 
+    @abstractmethod
+    def system_prompt_vars(self, agent_id: int) -> dict:
+        """Env-specific placeholder values for `prompts/{env_type}/system.txt`.
+
+        The runner spreads the returned dict into `template.format(**vars)`. Keeps the
+        runner generic — it renders prompts without knowing which env is running.
+        """
+
+    def reward_elevation_baseline(self) -> tuple[float, float] | None:
+        """Per-agent (low, high) reward anchors for normalized reward elevation.
+
+        Used by the runner to compute `trajectory_signals.reward_elevation` as
+        `(reward - low) / (high - low)`. `low` is the competitive baseline (Nash),
+        `high` is the joint-monopoly upper bound (symmetric, per agent). Returning
+        `None` skips the signal for envs without a meaningful baseline.
+        """
+        return None
+
 
 # ---------------------------------------------------------------------------
 # Registry

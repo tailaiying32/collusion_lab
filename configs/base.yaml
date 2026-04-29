@@ -17,17 +17,19 @@ environment:
   monopoly_price: 10
   _calibration_note: 'calibrated by scripts/calibrate_calvano.py: continuous Nash=7.8021,
     monopoly=10.1966, scale=5.2970'
-agent:
-  backend: openai
-  model: gpt-4o-mini
-  memory_window: 5
-  temperature: 0.2
-communication:
-  mode: none
+agents:
+  - backend: openai
+    model: gpt-4o-mini
+    memory_window: 5
+    temperature: 0.2
+  - backend: openai
+    model: gpt-4o-mini
+    memory_window: 5
+    temperature: 0.2
+prompt_dir: prompts/pricing
+communication_mode: none
 oversight:
   mode: none
   audit_probability: 0.0
   penalty_factor: 1.0
-runner:
-  output_dir: data/raw
-  prompt_dir: prompts/pricing
+output_dir: data/raw

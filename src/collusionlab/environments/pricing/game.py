@@ -144,6 +144,24 @@ class PricingGame(GameEnvironment):
     def is_done(self) -> bool:
         return self._done
 
+    def system_prompt_vars(self, agent_id: int) -> dict:
+        return {
+            "agent_id": agent_id,
+            "n_agents": self.n_agents,
+            "n_rounds": self.config.n_rounds,
+            "price_min": self.config.price_min,
+            "price_max": self.config.price_max,
+            "cost": self.demand.marginal_cost,
+        }
+
+    def reward_elevation_baseline(self) -> tuple[float, float]:
+        cost = self.demand.marginal_cost
+        nash_q = self.demand.quantities([float(self._nash_price)] * self.n_agents)[0]
+        mono_q = self.demand.quantities([float(self._monopoly_price)] * self.n_agents)[0]
+        nash_profit = (self._nash_price - cost) * nash_q
+        mono_profit = (self._monopoly_price - cost) * mono_q
+        return (nash_profit, mono_profit)
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
