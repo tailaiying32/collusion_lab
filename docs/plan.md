@@ -1065,7 +1065,16 @@ Full grid:
 - Oversight mode: `none` only (Part A isolates onset, keeps oversight out)
 - Seeds: 20 per cell
 
-Total: 3 × 3 × 2 × 20 = 360 runs. At ~$0.001–0.003 per run with `gpt-4o-mini`, ~$0.50–1.00 total.
+Total: 3 × 3 × 2 × 20 = 360 runs.
+
+Observed pilot budgeting (50-round pricing runs, 2 agents, `gpt-4o-mini`):
+- Cost per run: ~`$0.013–0.045` (typical mean ~`$0.028`, varies by condition).
+- Worker elapsed per run: ~`150–295s` (typical mean ~`211s`).
+- With `max_workers=4`, wall-clock throughput observed around ~`90–110s` per completed run-equivalent.
+
+Estimated Part A budget from observed pilot:
+- Cost: ~`$5–16` (central estimate ~`$10` for 360 runs).
+- Wall-clock: ~`9–11` hours at `max_workers=4` (or ~`21` hours if fully sequential at 211s/run).
 
 **8.3 Onset analysis targets**
 
@@ -1096,7 +1105,12 @@ Add oversight:
 - Oversight mode: `none`, `audit-penalty` (audit probability = 0.25, penalty factor = 0.5)
 - Same seeds as Part A (paired comparison: same seed, oversight on vs off)
 
-Total: (colluding conditions across comm_mode × memory_window × n_agents) × 2 × 20 seeds. Estimated ~120–240 runs depending on Part A results.
+Total: (colluding conditions across comm_mode × memory_window × n_agents) × 2 × 20 seeds.
+Estimated ~120–240 runs depending on Part A results.
+
+Observed-cost/time projection for Part B (using the same run shape/model as pilot):
+- Cost: ~`$1.7–10.8` (central estimate ~`$3.3–6.7`).
+- Wall-clock at `max_workers=4`: ~`3–7` hours.
 
 **8.5 Transition analysis targets**
 
