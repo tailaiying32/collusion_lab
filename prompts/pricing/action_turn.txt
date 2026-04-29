@@ -1,6 +1,6 @@
 Round {round_number} of {n_rounds}.
 
-History (most recent rounds, oldest first):
+Last {window_size} rounds, chronological order:
 {memory_context}
 
 Messages received this round:

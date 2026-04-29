@@ -93,6 +93,7 @@ class Experiment:
 
                 # (c) Step the env.
                 rewards, next_obs, done = env.step(actions)
+                rewards_pre_penalty = list(rewards)
 
                 # (d) Oversight.
                 round_log_for_audit = {
@@ -103,6 +104,7 @@ class Experiment:
                 }
                 audit_event = oversight.check(round_log_for_audit, history)
                 rewards = oversight.apply_penalty(rewards, audit_event)
+                rewards_post_penalty = list(rewards)
                 penalty_applied = bool(
                     audit_event and audit_event.get("penalty_applied")
                 )
@@ -128,10 +130,14 @@ class Experiment:
 
                 # (f) Trajectory signals.
                 signals = self._compute_signals(
-                    actions, rewards, elevation_baseline, audit_event,
+                    actions,
+                    rewards_pre_penalty,
+                    rewards_post_penalty,
+                    elevation_baseline,
+                    audit_event,
                 )
                 extra = env.compute_extra_signals(
-                    actions, rewards, prev_actions, round_idx,
+                    actions, rewards_post_penalty, prev_actions, round_idx,
                 )
                 signals.update(extra)
                 prev_actions = list(actions)
@@ -233,7 +239,8 @@ class Experiment:
     @staticmethod
     def _compute_signals(
         actions: list,
-        rewards: list[float],
+        rewards_pre_penalty: list[float],
+        rewards_post_penalty: list[float],
         elevation_baseline: tuple[float, float] | None,
         audit_event: dict | None,
     ) -> dict:
@@ -242,21 +249,24 @@ class Experiment:
         except TypeError:
             spread = None
 
-        if elevation_baseline is None:
-            elevation = None
-        else:
+        elevation_pre = None
+        elevation_post = None
+        if elevation_baseline is not None:
             low, high = elevation_baseline
             denom = high - low
-            if denom == 0 or not math.isfinite(denom):
-                elevation = None
-            else:
-                elevation = [(r - low) / denom for r in rewards]
+            if denom != 0 and math.isfinite(denom):
+                elevation_pre = [(r - low) / denom for r in rewards_pre_penalty]
+                elevation_post = [(r - low) / denom for r in rewards_post_penalty]
 
         signals: dict = {}
         if spread is not None:
             signals["action_spread"] = spread
-        if elevation is not None:
-            signals["reward_elevation"] = elevation
+        if elevation_pre is not None:
+            signals["reward_elevation_pre_penalty"] = elevation_pre
+        if elevation_post is not None:
+            # Keep the legacy key for backward compatibility in metrics/UI code.
+            signals["reward_elevation"] = elevation_post
+            signals["reward_elevation_post_penalty"] = elevation_post
 
         explicit = False
         behavior = False

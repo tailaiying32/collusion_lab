@@ -58,6 +58,12 @@ def test_calvano_quantities_sum_below_one_due_to_outside_option():
     assert math.isclose(q[0], q[1], abs_tol=1e-12)
 
 
+def test_calvano_nash_solution_is_near_fixed_point():
+    d = CalvanoDemand(n_agents=2, a=2.0, mu=0.25, a_0=0.0, c=1.0)
+    p = d.nash_price()
+    assert abs(d._best_response(p) - p) < 1e-4
+
+
 def test_demand_model_interface_satisfied():
     """Both demand models conform to the DemandModel ABC."""
     cd = CalvanoDemand(n_agents=2, a=2.0, mu=0.25, a_0=0.0, c=1.0)
@@ -121,6 +127,21 @@ def test_pricing_game_step_at_nash_gives_expected_profits():
     assert done is False  # 50 rounds in the calibrated config
     # Cumulative profits == per-round profits after one step.
     assert math.isclose(obs["cumulative_profits"][0], rewards[0])
+
+
+def test_bertrand_default_nash_price_respects_constrained_grid_floor():
+    cfg = _calibrated_config(
+        demand_model="bertrand",
+        demand_params={"Q": 1.0, "c": 1.0, "reservation_price": 10.0},
+        nash_price=None,
+        monopoly_price=None,
+        price_min=3,
+        price_max=15,
+    )
+    game = PricingGame(cfg)
+    nash_profit, _ = game.reward_elevation_baseline()
+    # At constrained Nash (price_min), ties split demand evenly across firms.
+    assert nash_profit == pytest.approx((cfg.price_min - 1.0) * (1.0 / cfg.n_agents))
 
 
 def test_pricing_game_reset_is_deterministic():

@@ -128,6 +128,15 @@ def test_memory_to_prompt_context_includes_own_reasoning():
     assert 'you reasoned: "Hold steady given recent margins."' in ctx
 
 
+def test_memory_clips_long_own_reasoning():
+    mem = AgentMemory(window_size=2)
+    long_reasoning = "x" * 500
+    mem.update(_round(1, own_reasoning=long_reasoning))
+    ctx = mem.to_prompt_context()
+    assert "... [truncated]" in ctx
+    assert len(mem.records()[0]["own_reasoning"]) <= 240
+
+
 def test_memory_empty_context_is_empty_string():
     assert AgentMemory(window_size=3).to_prompt_context() == ""
 
@@ -228,6 +237,16 @@ def test_decide_action_includes_action_space_description_in_prompt():
     assert game.action_space()["description"] in user_msg
     # Received messages also rendered.
     assert "price low" in user_msg
+
+
+def test_prompts_include_window_size_header_text():
+    client = ScriptedModelClient(["hello", "7"])
+    agent, game = _make_agent(client, comm_mode="public", memory_window=3)
+    obs = game.reset(seed=0)
+    agent.compose_message(obs)
+    agent.decide_action(obs, messages_received=[])
+    assert "Last 3 rounds, chronological order:" in client.calls[0][1]["content"]
+    assert "Last 3 rounds, chronological order:" in client.calls[1][1]["content"]
 
 
 # ---------------------------------------------------------------------------

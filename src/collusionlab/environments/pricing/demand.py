@@ -103,8 +103,14 @@ class CalvanoDemand(DemandModel):
         for _ in range(200):
             br = self._best_response(p)
             if abs(br - p) < 1e-7:
-                return br
+                p = br
+                break
             p = 0.5 * (p + br)  # damped update for stability
+        gap = abs(self._best_response(p) - p)
+        if gap > 1e-4:
+            raise RuntimeError(
+                f"Calvano symmetric Nash solver failed to converge: fixed-point gap={gap:.6g}"
+            )
         return p
 
     def _best_response(self, rival_p: float) -> float:

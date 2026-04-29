@@ -163,15 +163,25 @@ def test_experiment_log_schema(tmp_path):
         assert "nash_price" not in rec["observations"]
         assert "monopoly_price" not in rec["observations"]
         sig = rec["trajectory_signals"]
-        assert {"action_spread", "reward_elevation",
-                "explicit_collusion_flag", "behavior_collusion_flag",
-                "covert_coordination_flag", "hollow_coordination_flag",
-                "price_follow_lag1"} == set(sig)
+        assert {
+            "action_spread",
+            "reward_elevation",
+            "reward_elevation_pre_penalty",
+            "reward_elevation_post_penalty",
+            "explicit_collusion_flag",
+            "behavior_collusion_flag",
+            "covert_coordination_flag",
+            "hollow_coordination_flag",
+            "price_follow_lag1",
+        } == set(sig)
         assert sig["action_spread"] == abs(7 - 9)
         assert isinstance(sig["reward_elevation"], list)
         assert rec["reasoning"] == ["7", "9"]
         assert len(rec["reasoning"]) == 2
         assert len(sig["reward_elevation"]) == 2
+        assert len(sig["reward_elevation_pre_penalty"]) == 2
+        assert len(sig["reward_elevation_post_penalty"]) == 2
+        assert sig["reward_elevation"] == sig["reward_elevation_post_penalty"]
         # No oversight → all flags False.
         assert sig["explicit_collusion_flag"] is False
         assert sig["behavior_collusion_flag"] is False
@@ -265,3 +275,16 @@ def test_experiment_reward_elevation_is_zero_at_nash(tmp_path):
     assert rec["trajectory_signals"]["action_spread"] == 0
     elev = rec["trajectory_signals"]["reward_elevation"]
     assert all(abs(e) < 1e-9 for e in elev)
+
+
+def test_compute_signals_tracks_pre_and_post_penalty_elevation():
+    signals = Experiment._compute_signals(
+        actions=[10, 10],
+        rewards_pre_penalty=[9.0, 9.0],
+        rewards_post_penalty=[4.5, 4.5],
+        elevation_baseline=(1.0, 9.0),
+        audit_event={"audited": True, "results": []},
+    )
+    assert signals["reward_elevation_pre_penalty"] == [1.0, 1.0]
+    assert signals["reward_elevation_post_penalty"] == [0.4375, 0.4375]
+    assert signals["reward_elevation"] == signals["reward_elevation_post_penalty"]

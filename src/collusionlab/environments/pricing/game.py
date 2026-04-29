@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import random
 import re
+from math import ceil
 
 from collusionlab.environments.base import GameEnvironment, register_environment
 from collusionlab.environments.pricing.config import PricingConfig
@@ -33,7 +34,7 @@ class PricingGame(GameEnvironment):
         self._nash_price: int = (
             config.nash_price
             if config.nash_price is not None
-            else self._round_to_grid(self.demand.nash_price())
+            else self._default_nash_price()
         )
         self._monopoly_price: int = (
             config.monopoly_price
@@ -190,6 +191,15 @@ class PricingGame(GameEnvironment):
             self.config.price_min,
             min(self.config.price_max, int(round(p))),
         )
+
+    def _default_nash_price(self) -> int:
+        # For winner-take-all Bertrand with an integer grid, the relevant
+        # constrained benchmark is the lowest feasible grid price at/above cost,
+        # not a rounded cost that can drift below/away from the feasible floor.
+        if self.config.demand_model == "bertrand":
+            constrained = max(self.config.price_min, int(ceil(self.demand.marginal_cost)))
+            return min(self.config.price_max, constrained)
+        return self._round_to_grid(self.demand.nash_price())
 
 
 register_environment("pricing", PricingGame, PricingConfig)

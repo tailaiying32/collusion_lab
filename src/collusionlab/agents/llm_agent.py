@@ -63,6 +63,7 @@ class LLMAgent:
         prompt = self.message_turn_template.format(
             round_number=self._current_round_number(obs),
             n_rounds=self.n_rounds,
+            window_size=self.memory.window_size,
             memory_context=self._memory_context(),
         )
         messages = [
@@ -79,6 +80,7 @@ class LLMAgent:
         user_prompt = self.action_turn_template.format(
             round_number=self._current_round_number(obs),
             n_rounds=self.n_rounds,
+            window_size=self.memory.window_size,
             memory_context=self._memory_context(),
             recent_messages=self._format_received(messages_received),
             action_space_description=action_desc,

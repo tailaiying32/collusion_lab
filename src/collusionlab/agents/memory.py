@@ -13,6 +13,8 @@ from __future__ import annotations
 from collections import deque
 from typing import Any
 
+MAX_REASONING_CHARS = 240
+
 
 REQUIRED_KEYS: frozenset[str] = frozenset(
     {
@@ -56,7 +58,9 @@ class AgentMemory:
                 f"round_data schema mismatch (missing={sorted(missing)}, "
                 f"extra={sorted(extra)})"
             )
-        self._buf.append(dict(round_data))  # defensive copy
+        cleaned = dict(round_data)  # defensive copy
+        cleaned["own_reasoning"] = _clip_reasoning(cleaned.get("own_reasoning"))
+        self._buf.append(cleaned)
 
     def __len__(self) -> int:
         return len(self._buf)
@@ -109,3 +113,14 @@ def _fmt_list(xs: list) -> str:
 
 def _fmt_reward(x: float) -> str:
     return f"{x:.4f}"
+
+
+def _clip_reasoning(text: Any) -> str | None:
+    if text is None:
+        return None
+    s = str(text).strip()
+    if not s:
+        return None
+    if len(s) <= MAX_REASONING_CHARS:
+        return s
+    return s[: MAX_REASONING_CHARS - 15].rstrip() + "... [truncated]"
