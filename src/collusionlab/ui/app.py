@@ -1,7 +1,7 @@
 """CollusionLab Analysis UI.
 
-Streamlit app for inspecting experiment runs. MVP focuses on single-run
-analysis; Run/Sweep/Compare pages are placeholders for future phases.
+Streamlit app for inspecting experiment runs, launching experiments and
+parameter sweeps, and comparing results across conditions.
 
 Launch:
     streamlit run src/collusionlab/ui/app.py
@@ -25,6 +25,7 @@ from collusionlab.ui.data_loading import (
     extract_trajectory_df,
 )
 from collusionlab.ui.run_page import render_run_page
+from collusionlab.ui.sweep_page import render_sweep_page
 
 # ---------------------------------------------------------------------------
 # Page config
@@ -64,8 +65,7 @@ def page_run():
 
 
 def page_sweep():
-    st.header("Parameter Sweep")
-    st.info("Coming soon: define parameter grids and execute parallel sweeps.")
+    render_sweep_page()
 
 
 def page_compare():
