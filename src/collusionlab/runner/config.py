@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, SerializeAsAny, model_validator
 
 from collusionlab.environments.base import (
     EnvironmentConfig,
@@ -44,7 +44,10 @@ class OversightConfig(BaseModel):
 class ExperimentConfig(BaseModel):
     run_id: str | None = None
     env_type: str
-    environment: EnvironmentConfig
+    # SerializeAsAny: dump the runtime type (PricingConfig etc.) so subclass fields
+    # like demand_params survive into the manifest. Without this, pydantic strips
+    # subclass-only fields because the declared type is the base class.
+    environment: SerializeAsAny[EnvironmentConfig]
     agents: list[AgentConfig]
     prompt_dir: str = "prompts/pricing"
     communication_mode: Literal["none", "public", "private"] = "none"

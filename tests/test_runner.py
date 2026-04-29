@@ -75,10 +75,15 @@ def test_config_from_yaml_round_trips(tmp_path):
 
     cfg = ExperimentConfig.from_yaml(ROOT / "configs" / "base.yaml")
     dumped = cfg.to_yaml_dict()
+    # Subclass-specific env fields must survive serialization (regression: pydantic
+    # was stripping them because the field type is the EnvironmentConfig base).
+    assert "demand_params" in dumped["environment"]
+    assert dumped["environment"]["demand_params"] == cfg.environment.demand_params
     yaml_path = tmp_path / "round.yaml"
     yaml_path.write_text(yaml.safe_dump(dumped))
     cfg2 = ExperimentConfig.from_yaml(yaml_path)
     assert cfg.to_yaml_dict() == cfg2.to_yaml_dict()
+    assert cfg2.environment.demand_params == cfg.environment.demand_params
 
 
 def test_config_rejects_agent_count_mismatch(tmp_path):
