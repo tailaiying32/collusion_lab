@@ -13,8 +13,6 @@ environment:
     mu: 8.461
     a_0: 0.0
     c: 33.844
-  nash_price: 50
-  monopoly_price: 65
   profit_scale: 10
 agents:
   backend: openai
