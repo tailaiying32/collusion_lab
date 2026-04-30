@@ -174,6 +174,7 @@ class Experiment:
         manifest = self._build_manifest(
             log_path=log_path,
             model_clients=model_clients,
+            oversight=oversight,
             agents=agents,
             start_time=start_time,
             end_time=end_time,
@@ -286,8 +287,8 @@ class Experiment:
         # concealment-layer behavior_collusion_series. Explicit language comes from auditors,
         # only populated when an audit fires.
         behavior = False
-        if elevation_post is not None:
-            mean_el = sum(elevation_post) / len(elevation_post)
+        if elevation_pre is not None:
+            mean_el = sum(elevation_pre) / len(elevation_pre)
             behavior = bool(mean_el >= behavior_threshold)
 
         explicit = False
@@ -310,6 +311,7 @@ class Experiment:
         self,
         log_path: Path,
         model_clients: list[ModelClient],
+        oversight: OversightManager,
         agents: list[LLMAgent],
         start_time: datetime,
         end_time: datetime,
@@ -334,6 +336,11 @@ class Experiment:
             total_out += client.output_tokens
             total_cost += client.cost_estimate()
             total_fallbacks += len(agent.fallback_events)
+        judge_client = oversight.judge_client
+        if judge_client is not None:
+            total_in += judge_client.input_tokens
+            total_out += judge_client.output_tokens
+            total_cost += judge_client.cost_estimate()
         return {
             "run_id": cfg.run_id,
             "env_type": cfg.env_type,

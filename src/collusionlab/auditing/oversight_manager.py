@@ -29,6 +29,7 @@ from collusionlab.auditing.temporal_auditor import TemporalAuditor
 from collusionlab.auditing.transcript_auditor import TranscriptAuditor
 
 if TYPE_CHECKING:
+    from collusionlab.agents.model_client import ModelClient
     from collusionlab.environments.base import GameEnvironment
     from collusionlab.runner.config import OversightConfig
 
@@ -65,6 +66,7 @@ class OversightManager:
         fusion_policy: RiskFusionPolicy | None = None,
         enforcement_policy: str = "fused",
         llm_judge_enforcement: str | None = None,
+        judge_client: "ModelClient | None" = None,
         seed: int = 0,
     ) -> None:
         self.auditors = auditors or []
@@ -76,6 +78,7 @@ class OversightManager:
         self.fusion_policy = fusion_policy or RiskFusionPolicy()
         self.enforcement_policy = enforcement_policy
         self.llm_judge_enforcement = llm_judge_enforcement
+        self._judge_client = judge_client
         self._rng = random.Random(seed)
         self._public_price_intent_pattern = re.compile(
             r"\b("
@@ -104,6 +107,7 @@ class OversightManager:
 
         auditors: list[Auditor] = []
 
+        judge_client = None
         if config.llm_judge_enabled:
             from pathlib import Path
 
@@ -157,8 +161,14 @@ class OversightManager:
             llm_judge_enforcement=(
                 config.llm_judge_enforcement if config.llm_judge_enabled else None
             ),
+            judge_client=judge_client,
             seed=seed,
         )
+
+    @property
+    def judge_client(self) -> "ModelClient | None":
+        """Return the LLM-judge client when judge mode is enabled."""
+        return self._judge_client
 
     def check(self, round_log: dict, history: list[dict]) -> dict | None:
         """Run auditors for this round if the probability die fires.

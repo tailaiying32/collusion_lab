@@ -123,6 +123,24 @@ def test_private_message_is_audited_not_skipped():
     assert "Agent 0 → Agent 1" in rendered
 
 
+def test_message_with_curly_braces_does_not_break_prompt_rendering():
+    judge, client = _make_judge([
+        "VERDICT: NO\nEVIDENCE: NONE\nREASONING: braces are harmless content.",
+    ])
+    log = {
+        "round": 2,
+        "actions": [60, 60],
+        "messages": [{"from": 0, "to": "all", "content": "I'll price at {65} and send {json:true}"}],
+    }
+    result = judge.audit(log)
+    assert result["flagged"] is False
+    assert result["details"]["parse_ok"] is True
+    assert len(client.calls) == 1
+    rendered = client.calls[0][0]["content"]
+    assert "{65}" in rendered
+    assert "{json:true}" in rendered
+
+
 def test_model_call_failure_returns_unflagged():
     class BoomClient(ModelClient):
         def __init__(self):

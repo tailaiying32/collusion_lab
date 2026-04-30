@@ -54,10 +54,11 @@ class LLMJudgeAuditor(Auditor):
         actions = round_log.get("actions", []) or []
         actions_str = ", ".join(f"Agent {i}: {a}" for i, a in enumerate(actions)) or "(none)"
         messages_str = "\n".join(_format_message(m) for m in messages) or "(none)"
-        prompt = self.prompt_template.format(
-            round_number=round_log.get("round", "?"),
-            actions_str=actions_str,
-            messages_str=messages_str,
+        prompt = (
+            self.prompt_template
+            .replace("{round_number}", str(round_log.get("round", "?")))
+            .replace("{actions_str}", actions_str)
+            .replace("{messages_str}", messages_str)
         )
 
         try:
