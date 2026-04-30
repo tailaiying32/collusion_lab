@@ -25,6 +25,7 @@ REQUIRED_KEYS: frozenset[str] = frozenset(
         "all_quantities",
         "own_reward",
         "penalty_applied",
+        "auditor_feedback",
         "messages_received",
         "message_sent",
         "own_reasoning",
@@ -50,6 +51,7 @@ class AgentMemory:
             all_quantities: list[float]  -- all firms' demand shares, same order as all_actions
             own_reward: float  -- own reward only; rivals' rewards are private
             penalty_applied: bool
+            auditor_feedback: str
             messages_received: list[str]
             message_sent: str | None
             own_reasoning: str | None  -- prior action-turn text (private to this agent)
@@ -102,6 +104,7 @@ class AgentMemory:
             if r["messages_received"]:
                 joined = " | ".join(f'"{m}"' for m in r["messages_received"])
                 lines.append(f"  you received: {joined}")
+            lines.append(f"  {r['auditor_feedback']}")
             own_reasoning = r.get("own_reasoning")
             if own_reasoning:
                 lines.append(f'  you reasoned: "{own_reasoning}"')
