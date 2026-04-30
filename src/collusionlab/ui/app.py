@@ -749,7 +749,7 @@ def render_transcript_tab(rows: list[dict], metrics: dict | None = None):
             container.markdown(status_text)
         elif covert:
             container = st.container(border=True)
-            container.markdown(f"**Round {round_num}** :large_orange_circle: Covert")
+            container.markdown(f"**Round {round_num}** 🟠 Covert")
         elif hollow:
             container = st.container(border=True)
             container.markdown(f"**Round {round_num}** :large_blue_circle: Hollow")
