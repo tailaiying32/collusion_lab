@@ -28,4 +28,7 @@ oversight:
   enforcement_policy: fused
   audit_probability: 1.0
   penalty_factor: 0.5
+  llm_judge_enabled: true
+  llm_judge_model: gpt-4o-mini
+  llm_judge_enforcement: judge_or_behavior
 output_dir: data/raw

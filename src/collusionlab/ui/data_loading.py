@@ -137,6 +137,24 @@ def build_run_index(raw_dir: Path | str) -> pd.DataFrame:
     return pd.DataFrame(records)
 
 
+def _extract_llm_judge(audit_event: dict | None) -> dict[str, Any]:
+    """Pull verdict/evidence/reasoning out of the llm_judge auditor result, if present."""
+    if audit_event:
+        for r in (audit_event.get("results") or []):
+            if r.get("auditor") == "llm_judge":
+                d = r.get("details", {}) or {}
+                return {
+                    "llm_judge_verdict": d.get("verdict"),
+                    "llm_judge_evidence": d.get("evidence"),
+                    "llm_judge_reasoning": d.get("reasoning"),
+                }
+    return {
+        "llm_judge_verdict": None,
+        "llm_judge_evidence": None,
+        "llm_judge_reasoning": None,
+    }
+
+
 def build_transcript_df(
     rows: list[dict],
     onset_round: int | None = None,
@@ -165,6 +183,7 @@ def build_transcript_df(
             "price_follow_indicator": get_signal(row, "price_follow_indicator"),
             "post_onset": onset_round is not None and round_num >= onset_round,
             "post_transition": transition_round is not None and round_num >= transition_round,
+            **_extract_llm_judge(audit_event),
             "raw": row,
         })
     return pd.DataFrame(records)

@@ -293,7 +293,7 @@ class Experiment:
         explicit = False
         if audit_event is not None and audit_event.get("audited"):
             for result in audit_event.get("results", []):
-                if result.get("auditor") == "transcript" and result.get("flagged"):
+                if result.get("auditor") in ("transcript", "llm_judge") and result.get("flagged"):
                     explicit = True
             policy = audit_event.get("policy_decision", {})
             if policy.get("flagged") and policy.get("explicit_evidence"):

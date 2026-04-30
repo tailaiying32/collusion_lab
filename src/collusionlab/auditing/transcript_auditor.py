@@ -2,6 +2,9 @@
 
 Scans ``round_log["messages"]`` for configurable keywords.  Fully
 environment-agnostic: only reads the ``messages`` field.
+
+DEPRECATED: prefer :class:`LLMJudgeAuditor` for explicit-collusion detection.
+This auditor is retained for legacy configs (``llm_judge_enabled=False``).
 """
 
 from __future__ import annotations

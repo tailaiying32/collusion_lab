@@ -216,6 +216,18 @@ def _render_live_metrics(log_lines: list[dict], state: dict, cumulative_cost: fl
         st.caption("Token and cost totals are finalized when the manifest is written at run completion.")
 
 
+def _get_llm_judge_verdict(audit_event: dict | None) -> str:
+    if not audit_event:
+        return "—"
+    for r in audit_event.get("results", []) or []:
+        if r.get("auditor") == "llm_judge":
+            d = r.get("details", {}) or {}
+            if d.get("skipped"):
+                return "—"
+            return d.get("verdict") or "—"
+    return "—"
+
+
 def _render_recent_rounds(log_lines: list[dict], n: int = 5) -> None:
     if not log_lines:
         return
@@ -229,6 +241,7 @@ def _render_recent_rounds(log_lines: list[dict], n: int = 5) -> None:
             "rewards": [round(r, 3) for r in line.get("rewards", [])],
             "mean_elevation": round(sum(elev) / len(elev), 3) if elev else None,
             "spread": signals.get("action_spread"),
+            "judge": _get_llm_judge_verdict(line.get("audit_event")),
             "covert": signals.get("covert_coordination_flag", False),
             "hollow": signals.get("hollow_coordination_flag", False),
         })
@@ -250,6 +263,38 @@ def _render_latest_reasoning(log_lines: list[dict]) -> None:
                 st.markdown("_No reasoning captured — fallback action._")
 
 
+def _render_latest_audit(log_lines: list[dict]) -> None:
+    last = log_lines[-1]
+    audit = last.get("audit_event")
+    if not audit:
+        return
+    with st.expander(f"Latest audit (round {last['round']})", expanded=False):
+        for result in audit.get("results", []) or []:
+            name = result.get("auditor")
+            details = result.get("details", {}) or {}
+            if name == "llm_judge":
+                if details.get("skipped"):
+                    st.caption("LLM judge: skipped (no messages this round).")
+                    continue
+                verdict = details.get("verdict") or "—"
+                st.markdown(f"**LLM judge:** {verdict}")
+                if details.get("evidence"):
+                    st.markdown(f"> {details['evidence']}")
+                if details.get("reasoning"):
+                    st.caption(details["reasoning"])
+                if details.get("error"):
+                    st.warning(f"Judge call failed: {details['error']}")
+            elif name == "behavior":
+                elev = details.get("current_elevation")
+                spread = details.get("current_spread")
+                sustained = details.get("sustained_rounds")
+                above = details.get("above_threshold")
+                st.caption(
+                    f"Behavior: elevation={elev}, spread={spread}, "
+                    f"sustained_rounds={sustained}, above_threshold={above}"
+                )
+
+
 def _render_running(state: dict, env_cfg: dict | None) -> None:
     cur = state.get("current_round", 0)
     total = max(state.get("total_rounds", 1), 1)
@@ -263,6 +308,7 @@ def _render_running(state: dict, env_cfg: dict | None) -> None:
         st.subheader("Recent Rounds")
         _render_recent_rounds(log_lines)
         _render_latest_reasoning(log_lines)
+        _render_latest_audit(log_lines)
     else:
         st.caption("Waiting for first round to complete…")
 
@@ -312,6 +358,7 @@ def render_run_page() -> None:
             st.subheader("Recent Rounds")
             _render_recent_rounds(log_lines)
             _render_latest_reasoning(log_lines)
+            _render_latest_audit(log_lines)
         col1, col2 = st.columns([1, 4])
         if col1.button("View in Analyze tab"):
             if run_id:

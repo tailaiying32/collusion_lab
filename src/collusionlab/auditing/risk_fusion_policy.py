@@ -1,4 +1,8 @@
-"""Risk fusion policy for combining modular auditor outputs."""
+"""Risk fusion policy for combining modular auditor outputs.
+
+DEPRECATED: superseded by :class:`LLMJudgeAuditor` enforcement in
+``OversightManager``. Retained for legacy ``llm_judge_enabled=False`` configs.
+"""
 
 from __future__ import annotations
 

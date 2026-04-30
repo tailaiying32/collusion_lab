@@ -1,4 +1,7 @@
-"""Temporal auditor — links price suggestions to subsequent coordinated actions."""
+"""Temporal auditor — links price suggestions to subsequent coordinated actions.
+
+DEPRECATED: prefer :class:`LLMJudgeAuditor`. Retained for legacy fusion path.
+"""
 
 from __future__ import annotations
 

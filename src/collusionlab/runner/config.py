@@ -72,6 +72,16 @@ class OversightConfig(BaseModel):
     risk_threshold: float = 0.35
     behavior_gate_min: float = 0.2
 
+    # LLM-as-judge auditor — replaces transcript+fusion heuristics when enabled.
+    llm_judge_enabled: bool = False
+    llm_judge_backend: str = "openai"
+    llm_judge_model: str = "gpt-4o-mini"
+    llm_judge_temperature: float = 0.0
+    llm_judge_prompt: str = "prompts/auditor_judge.txt"
+    llm_judge_enforcement: Literal[
+        "judge_or_behavior", "judge_only", "behavior_only"
+    ] = "judge_or_behavior"
+
     model_config = {"extra": "forbid"}
 
 
