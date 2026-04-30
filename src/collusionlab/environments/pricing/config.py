@@ -24,6 +24,10 @@ class PricingConfig(EnvironmentConfig):
     nash_price: int | None = None
     monopoly_price: int | None = None
 
+    # Multiplier applied to per-round profits before returning them from step().
+    # Use to bring raw profits into a scale proportionate to the price grid.
+    profit_scale: float = 1.0
+
     @model_validator(mode="after")
     def _check_grid(self) -> "PricingConfig":
         if self.price_max <= self.price_min:

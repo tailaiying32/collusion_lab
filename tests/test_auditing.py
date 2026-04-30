@@ -418,6 +418,32 @@ class TestOversightManager:
         assert isinstance(mgr.auditors[0], TranscriptAuditor)
         assert isinstance(mgr.auditors[1], BehaviorAuditor)
         assert isinstance(mgr.auditors[2], TemporalAuditor)
+        assert mgr.enforcement_policy == "fused"
+
+    def test_transcript_only_enforcement_penalizes_keyword_flag(self):
+        from collusionlab.runner.config import OversightConfig
+
+        config = OversightConfig(
+            mode="audit-penalty",
+            enforcement_policy="transcript_only",
+            audit_probability=1.0,
+            penalty_factor=0.5,
+            keywords=["agree"],
+        )
+        env = MagicMock()
+        env.reward_elevation_baseline.return_value = (2.0, 6.0)
+        mgr = OversightManager.from_config(config, seed=7, env=env)
+
+        log = {
+            "messages": [{"from": 0, "to": "all", "content": "we agree to hold price"}],
+            "actions": [8, 9],
+            "rewards": [2.0, 2.0],
+        }
+        event = mgr.check(log, [])
+        assert event is not None
+        assert event["flagged"] is True
+        assert event["penalty_applied"] is True
+        assert event["policy_decision"]["enforcement_policy"] == "transcript_only"
 
 
 class TestTemporalAuditor:

@@ -1,0 +1,39 @@
+# Phase 8 §8.2 — Onset threshold study (oversight isolated: none only).
+# Grid size: 3 comm × 3 memory × 2 n_agents × 20 seeds × 1 oversight = 360 runs.
+mode: grid
+base_config: configs/base.yaml
+overrides:
+  environment.seed:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    - 15
+    - 16
+    - 17
+    - 18
+    - 19
+    - 20
+  communication_mode:
+    - none
+    - public
+    - private
+  agents.memory_window:
+    - 1
+    - 5
+    - 10
+  environment.n_agents:
+    - 2
+    - 3
+  oversight.mode:
+    - none

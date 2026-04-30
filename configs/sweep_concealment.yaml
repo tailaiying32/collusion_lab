@@ -8,6 +8,6 @@ overrides:
       audit_probability: 0.0
       penalty_factor: 1.0
     - mode: "audit-penalty"
-      audit_probability: 0.35
+      audit_probability: 1.0
       penalty_factor: 0.5
       include_auditor_notice: true

@@ -44,12 +44,14 @@ class OversightManager:
         audit_probability: float = 0.0,
         penalty_factor: float = 1.0,
         fusion_policy: RiskFusionPolicy | None = None,
+        enforcement_policy: str = "fused",
         seed: int = 0,
     ) -> None:
         self.auditors = auditors or []
         self.audit_probability = audit_probability
         self.penalty_factor = penalty_factor
         self.fusion_policy = fusion_policy or RiskFusionPolicy()
+        self.enforcement_policy = enforcement_policy
         self._rng = random.Random(seed)
         self._public_price_intent_pattern = re.compile(
             r"\b("
@@ -72,6 +74,7 @@ class OversightManager:
                 auditors=[],
                 audit_probability=0.0,
                 penalty_factor=1.0,
+                enforcement_policy=config.enforcement_policy,
                 seed=seed,
             )
 
@@ -106,6 +109,7 @@ class OversightManager:
                 threshold=config.risk_threshold,
                 behavior_gate_min=config.behavior_gate_min,
             ),
+            enforcement_policy=config.enforcement_policy,
             seed=seed,
         )
 
@@ -126,7 +130,17 @@ class OversightManager:
         policy_decision = self.fusion_policy.evaluate(results)
         hard_rule_triggered = self._has_public_numeric_price_intent(round_log)
         detected_flag = any(r.get("flagged", False) for r in results) or hard_rule_triggered
-        enforcement_flag = policy_decision.get("flagged", False) or hard_rule_triggered
+        if self.enforcement_policy == "transcript_only":
+            transcript_result = next(
+                (r for r in results if r.get("auditor") == "transcript"),
+                None,
+            )
+            transcript_flag = bool(
+                transcript_result and transcript_result.get("flagged", False)
+            )
+            enforcement_flag = transcript_flag or hard_rule_triggered
+        else:
+            enforcement_flag = policy_decision.get("flagged", False) or hard_rule_triggered
         if hard_rule_triggered:
             policy_decision = {
                 **policy_decision,
@@ -140,6 +154,10 @@ class OversightManager:
                     set(list(policy_decision.get("triggered_by", [])) + ["hard_rule"])
                 ),
             }
+        policy_decision = {
+            **policy_decision,
+            "enforcement_policy": self.enforcement_policy,
+        }
 
         return {
             "audited": True,

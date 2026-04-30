@@ -1,0 +1,42 @@
+# Phase 8 Part B — transcript-focused oversight vs none.
+#
+# Uses oversight.enforcement_policy: transcript_only so penalties are driven by
+# transcript evidence (plus hard-rule public numeric price intent), not fused risk.
+mode: grid
+base_config: configs/base.yaml
+overrides:
+  environment.seed:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    - 15
+    - 16
+    - 17
+    - 18
+    - 19
+    - 20
+  communication_mode:
+    - none
+    - public
+    - private
+  oversight:
+    - mode: none
+      enforcement_policy: fused
+      audit_probability: 0.0
+      penalty_factor: 1.0
+    - mode: audit-penalty
+      enforcement_policy: transcript_only
+      audit_probability: 1.0
+      penalty_factor: 0.5
+      include_auditor_notice: true

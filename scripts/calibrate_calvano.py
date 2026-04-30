@@ -146,6 +146,9 @@ def main() -> None:
         default=[10, 11],
         help="acceptable integer monopoly positions on the grid",
     )
+    parser.add_argument("--scale-lo", type=float, default=2.0, help="lower bound for scale search")
+    parser.add_argument("--scale-hi", type=float, default=8.0, help="upper bound for scale search")
+    parser.add_argument("--n-steps", type=int, default=6001, help="number of scale steps")
     parser.add_argument(
         "--config",
         type=Path,
@@ -163,6 +166,9 @@ def main() -> None:
         n_agents=args.n_agents,
         nash_targets=tuple(args.nash_targets),
         monopoly_targets=tuple(args.monopoly_targets),
+        scale_lo=args.scale_lo,
+        scale_hi=args.scale_hi,
+        n_steps=args.n_steps,
     )
     print("Calibrated Calvano parameters:")
     for k, v in result.items():

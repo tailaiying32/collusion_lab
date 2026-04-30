@@ -55,6 +55,7 @@ _DEFAULT_KEYWORDS: list[str] = [
 
 class OversightConfig(BaseModel):
     mode: Literal["none", "audit-penalty"] = "none"
+    enforcement_policy: Literal["fused", "transcript_only"] = "fused"
     include_auditor_notice: bool = True
     audit_probability: float = 0.0
     penalty_factor: float = 1.0
@@ -83,6 +84,9 @@ class ExperimentConfig(BaseModel):
     environment: SerializeAsAny[EnvironmentConfig]
     agents: AgentConfig
     prompt_dir: str = "prompts/pricing"
+    # Optional extra paragraphs injected into action/message turns only (never the
+    # system prompt). Leave empty for neutral experiments; use for reproducible A/B wording.
+    strategic_guidance: str = ""
     communication_mode: Literal["none", "public", "private"] = "none"
     oversight: OversightConfig = Field(default_factory=OversightConfig)
     output_dir: str = "data/raw"

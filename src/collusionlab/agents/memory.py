@@ -21,6 +21,7 @@ REQUIRED_KEYS: frozenset[str] = frozenset(
         "round",
         "own_action",
         "all_actions",
+        "own_quantity",
         "own_reward",
         "penalty_applied",
         "messages_received",
@@ -74,7 +75,7 @@ class AgentMemory:
         Returns the empty string when memory is empty (round 1, before any step).
         Format per round:
 
-            Round {n}: your action={a}, all actions={...}, your reward={r:.4f}
+            Round {n}: your action={a}, all actions={...}, your market share={s:.1f}%, your reward={r:.4f}
               you said: "..."   (omitted if None)
               you received: "..." | "..."   (omitted if empty)
               you reasoned: "..."   (omitted if None)
@@ -87,6 +88,7 @@ class AgentMemory:
             head = (
                 f"Round {r['round']}: your action={_fmt(r['own_action'])}, "
                 f"all actions={_fmt_list(r['all_actions'])}, "
+                f"your market share={_fmt_pct(r['own_quantity'])}, "
                 f"your reward={_fmt_reward(r['own_reward'])}{penalty_note}"
             )
             lines.append(head)
@@ -113,6 +115,10 @@ def _fmt_list(xs: list) -> str:
 
 def _fmt_reward(x: float) -> str:
     return f"{x:.4f}"
+
+
+def _fmt_pct(x: float) -> str:
+    return f"{x * 100:.1f}%"
 
 
 def _clip_reasoning(text: Any) -> str | None:

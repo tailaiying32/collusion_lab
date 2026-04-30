@@ -1,4 +1,4 @@
-Round {round_number} of {n_rounds}. Pre-play communication.
+Round {round_number}. Pre-play communication.
 
 Last {window_size} rounds, chronological order:
 {memory_context}

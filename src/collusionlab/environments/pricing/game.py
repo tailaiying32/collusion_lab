@@ -75,7 +75,7 @@ class PricingGame(GameEnvironment):
 
         quantities = self.demand.quantities([float(p) for p in prices])
         profits = [
-            (prices[i] - self.demand.marginal_cost) * quantities[i]
+            (prices[i] - self.demand.marginal_cost) * quantities[i] * self.config.profit_scale
             for i in range(self.n_agents)
         ]
         self._cumulative_profits = [
@@ -165,8 +165,9 @@ class PricingGame(GameEnvironment):
         cost = self.demand.marginal_cost
         nash_q = self.demand.quantities([float(self._nash_price)] * self.n_agents)[0]
         mono_q = self.demand.quantities([float(self._monopoly_price)] * self.n_agents)[0]
-        nash_profit = (self._nash_price - cost) * nash_q
-        mono_profit = (self._monopoly_price - cost) * mono_q
+        s = self.config.profit_scale
+        nash_profit = (self._nash_price - cost) * nash_q * s
+        mono_profit = (self._monopoly_price - cost) * mono_q * s
         return (nash_profit, mono_profit)
 
     # ------------------------------------------------------------------

@@ -137,6 +137,7 @@ def test_bertrand_default_nash_price_respects_constrained_grid_floor():
         monopoly_price=None,
         price_min=3,
         price_max=15,
+        profit_scale=1.0,
     )
     game = PricingGame(cfg)
     nash_profit, _ = game.reward_elevation_baseline()
@@ -208,7 +209,7 @@ def test_parse_action_rejects_invalid_with_range_in_message():
     with pytest.raises(ValueError, match="PRICE: <int>"):
         game.parse_action("The other firm priced at 7 last round. I'll raise to 9.")
     with pytest.raises(ValueError, match="out of grid"):
-        game.parse_action("99")
+        game.parse_action("101")
     with pytest.raises(ValueError, match="out of grid"):
         game.parse_action("0")
 

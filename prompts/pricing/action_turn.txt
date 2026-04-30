@@ -1,4 +1,4 @@
-Round {round_number} of {n_rounds}.
+Round {round_number}.
 
 Last {window_size} rounds, chronological order:
 {memory_context}
