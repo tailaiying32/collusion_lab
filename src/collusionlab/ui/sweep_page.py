@@ -25,6 +25,7 @@ from pydantic import ValidationError
 
 from collusionlab.runner.config import ExperimentConfig
 from collusionlab.runner.sweep import SweepConfig, SweepRunner
+from collusionlab.ui.data_loading import get_recent_config, set_recent_config
 
 load_dotenv()
 
@@ -37,6 +38,18 @@ BASE_EDITOR_KEY = "sweep_page_base_yaml_editor"
 BASE_PATH_KEY = "sweep_page_base_path"
 BASE_FILE_SELECT_KEY = "sweep_page_base_file_select"
 CUSTOM_LABEL = "(custom)"
+RECENT_SWEEP_CONFIG_KEY = "sweep_page_last_sweep_config"
+RECENT_BASE_CONFIG_KEY = "sweep_page_last_base_config"
+BACKEND_MODELS: dict[str, list[str]] = {
+    "openai": ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini"],
+    "anthropic": ["claude-haiku-4-5-20251001", "claude-sonnet-4-6", "claude-opus-4-7"],
+    "deepseek": ["deepseek-v4-flash"],
+}
+MODEL_TO_BACKEND: dict[str, str] = {
+    model: backend
+    for backend, models in BACKEND_MODELS.items()
+    for model in models
+}
 
 PREVIEW_CAP = 100
 
@@ -175,8 +188,11 @@ def _init_editor_state() -> None:
     files = _list_sweep_files()
     file_labels = [CUSTOM_LABEL] + [p.name for p in files]
     if FILE_SELECT_KEY not in st.session_state:
-        default = next(
-            (n for n in file_labels if n.startswith("sweep_")), file_labels[0]
+        recent = get_recent_config(RECENT_SWEEP_CONFIG_KEY)
+        default = (
+            recent
+            if recent in file_labels
+            else next((n for n in file_labels if n.startswith("sweep_")), file_labels[0])
         )
         st.session_state[FILE_SELECT_KEY] = default
     if EDITOR_KEY not in st.session_state:
@@ -192,6 +208,7 @@ def _init_editor_state() -> None:
 def _on_file_change() -> None:
     sel = st.session_state[FILE_SELECT_KEY]
     if sel != CUSTOM_LABEL:
+        set_recent_config(RECENT_SWEEP_CONFIG_KEY, sel)
         st.session_state[EDITOR_KEY] = (
             (CONFIGS_DIR / sel).read_text(encoding="utf-8")
         )
@@ -200,21 +217,51 @@ def _on_file_change() -> None:
 def _on_base_file_change() -> None:
     sel = st.session_state.get(BASE_FILE_SELECT_KEY, CUSTOM_LABEL)
     if sel != CUSTOM_LABEL:
+        set_recent_config(RECENT_BASE_CONFIG_KEY, sel)
         path = CONFIGS_DIR / sel
         st.session_state[BASE_PATH_KEY] = str(path)
         st.session_state[BASE_EDITOR_KEY] = path.read_text(encoding="utf-8")
 
 
+def _build_selector_options(file_names: list[str], recent_name: str | None) -> list[str]:
+    options = [CUSTOM_LABEL]
+    for name in file_names:
+        if recent_name and name == recent_name:
+            options.append(f"{name} (most recent)")
+        else:
+            options.append(name)
+    return options
+
+
+def _selector_value_to_name(value: str) -> str:
+    return value.replace(" (most recent)", "")
+
+
 def _render_editor() -> str:
     files = _list_sweep_files()
-    file_labels = [CUSTOM_LABEL] + [p.name for p in files]
+    file_names = [p.name for p in files]
+    recent_name = get_recent_config(RECENT_SWEEP_CONFIG_KEY)
+    file_labels = _build_selector_options(file_names, recent_name)
+    selected_name = st.session_state.get(FILE_SELECT_KEY, CUSTOM_LABEL)
+    default_label = (
+        f"{selected_name} (most recent)"
+        if recent_name and selected_name == recent_name and selected_name != CUSTOM_LABEL
+        else selected_name
+    )
+    if default_label not in file_labels:
+        default_label = CUSTOM_LABEL
     st.selectbox(
         "Load sweep config",
         options=file_labels,
-        key=FILE_SELECT_KEY,
-        on_change=_on_file_change,
+        key=f"{FILE_SELECT_KEY}_display",
+        index=file_labels.index(default_label),
         help="Pick a sweep YAML from configs/. sweep_*.yaml files listed first.",
     )
+    selected_display = st.session_state.get(f"{FILE_SELECT_KEY}_display", CUSTOM_LABEL)
+    normalized = _selector_value_to_name(selected_display)
+    if st.session_state.get(FILE_SELECT_KEY) != normalized:
+        st.session_state[FILE_SELECT_KEY] = normalized
+        _on_file_change()
     return st.text_area(
         "Sweep Config YAML",
         height=340,
@@ -224,19 +271,40 @@ def _render_editor() -> str:
 
 def _render_base_selector(default_path: Path | None) -> None:
     files = _list_base_files()
-    file_labels = [CUSTOM_LABEL] + [p.name for p in files]
+    file_names = [p.name for p in files]
+    recent_name = get_recent_config(RECENT_BASE_CONFIG_KEY)
+    file_labels = _build_selector_options(file_names, recent_name)
     if BASE_FILE_SELECT_KEY not in st.session_state:
         default_name = default_path.name if default_path and default_path.exists() else None
         st.session_state[BASE_FILE_SELECT_KEY] = (
-            default_name if default_name in file_labels else (file_labels[1] if len(file_labels) > 1 else CUSTOM_LABEL)
+            recent_name
+            if recent_name in [CUSTOM_LABEL] + file_names
+            else (
+                default_name
+                if default_name in [CUSTOM_LABEL] + file_names
+                else (file_names[0] if file_names else CUSTOM_LABEL)
+            )
         )
+    selected_name = st.session_state.get(BASE_FILE_SELECT_KEY, CUSTOM_LABEL)
+    default_label = (
+        f"{selected_name} (most recent)"
+        if recent_name and selected_name == recent_name and selected_name != CUSTOM_LABEL
+        else selected_name
+    )
+    if default_label not in file_labels:
+        default_label = CUSTOM_LABEL
     st.selectbox(
         "Load base config",
         options=file_labels,
-        key=BASE_FILE_SELECT_KEY,
-        on_change=_on_base_file_change,
+        key=f"{BASE_FILE_SELECT_KEY}_display",
+        index=file_labels.index(default_label),
         help="Pick a base experiment YAML from configs/ (or keep custom text).",
     )
+    selected_display = st.session_state.get(f"{BASE_FILE_SELECT_KEY}_display", CUSTOM_LABEL)
+    normalized = _selector_value_to_name(selected_display)
+    if st.session_state.get(BASE_FILE_SELECT_KEY) != normalized:
+        st.session_state[BASE_FILE_SELECT_KEY] = normalized
+        _on_base_file_change()
 
 
 def _sync_base_editor(base_path: Path) -> None:
@@ -275,6 +343,45 @@ def _validate_base_yaml(text: str) -> tuple[str | None, dict | None]:
         return f"Base config validation error:\n{e}", None
     except Exception as e:
         return f"Base config {type(e).__name__}: {e}", None
+
+
+def _patch_agent_models(text: str, updates: dict[str, str]) -> str:
+    try:
+        data = yaml.safe_load(text) or {}
+    except yaml.YAMLError:
+        return text
+    if not isinstance(data, dict):
+        return text
+    agents = data.get("agents")
+    if not isinstance(agents, dict):
+        return text
+    agents.update(updates)
+    data["agents"] = agents
+    return yaml.safe_dump(data, sort_keys=False)
+
+
+def _render_base_model_picker() -> None:
+    text = st.session_state.get(BASE_EDITOR_KEY, "")
+    _, base_data = _validate_base_yaml(text)
+    if not isinstance(base_data, dict):
+        return
+    cfg = ExperimentConfig(**base_data)
+    model_options = list(MODEL_TO_BACKEND.keys())
+    if cfg.agents.model not in model_options:
+        model_options = [cfg.agents.model] + model_options
+    selected_model = st.selectbox(
+        "Firm model",
+        options=model_options,
+        index=model_options.index(cfg.agents.model),
+        key="sweep_base_firm_model",
+    )
+    selected_backend = MODEL_TO_BACKEND.get(selected_model, cfg.agents.backend)
+    if selected_model != cfg.agents.model or selected_backend != cfg.agents.backend:
+        st.session_state[BASE_EDITOR_KEY] = _patch_agent_models(
+            text,
+            {"backend": selected_backend, "model": selected_model},
+        )
+        st.rerun()
 
 
 def _materialize_ui_base_config(text: str) -> Path:
@@ -473,6 +580,7 @@ def render_sweep_page() -> None:
         _sync_base_editor(base_path)
     st.subheader("Base Experiment Config")
     st.caption("Edits here are applied to preview + launch for this sweep run.")
+    _render_base_model_picker()
     st.text_area(
         "Base Config YAML",
         height=260,

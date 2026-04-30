@@ -16,12 +16,15 @@ from collusionlab.ui.data_loading import (
     build_run_index,
     build_transcript_df,
     extract_trajectory_df,
+    get_recent_config,
     get_signal,
     list_sweeps,
     list_runs,
     load_log_rows,
     load_manifest,
+    load_recent_configs,
     load_sweep_manifest,
+    set_recent_config,
 )
 
 
@@ -324,3 +327,16 @@ def test_build_compare_df_adds_concealment_gap():
     assert df.loc[0, "concealment_gap"] == pytest.approx(0.2)
     assert df.loc[0, "has_onset"] == True
     assert df.loc[0, "has_transition"] == False
+
+
+def test_recent_config_persistence_round_trip(tmp_path, monkeypatch):
+    from collusionlab.ui import data_loading
+
+    monkeypatch.setattr(data_loading, "UI_PREFS_PATH", tmp_path / "recent.json")
+    assert load_recent_configs() == {}
+    set_recent_config("run_page_last_config", "base.yaml")
+    set_recent_config("sweep_page_last_base_config", "pricing_audit.yaml")
+    assert get_recent_config("run_page_last_config") == "base.yaml"
+    prefs = load_recent_configs()
+    assert prefs["run_page_last_config"] == "base.yaml"
+    assert prefs["sweep_page_last_base_config"] == "pricing_audit.yaml"

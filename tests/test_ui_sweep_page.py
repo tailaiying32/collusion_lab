@@ -8,7 +8,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from collusionlab.ui.sweep_page import _validate_base_yaml, _validate_sweep_yaml
+from collusionlab.ui.sweep_page import (
+    _build_selector_options,
+    _patch_agent_models,
+    _validate_base_yaml,
+    _validate_sweep_yaml,
+)
 
 
 def test_sweep_page_validate_sweep_yaml_accepts_example():
@@ -30,3 +35,22 @@ def test_sweep_page_validate_base_yaml_reports_error():
     msg, data = _validate_base_yaml("not: [valid")
     assert data is None
     assert "parse error" in msg
+
+
+def test_sweep_selector_options_marks_recent_entry():
+    opts = _build_selector_options(["sweep_comm.yaml", "base.yaml"], "sweep_comm.yaml")
+    assert opts[0] == "(custom)"
+    assert "sweep_comm.yaml (most recent)" in opts
+
+
+def test_sweep_patch_agent_models_updates_backend_and_model():
+    text = (ROOT / "configs" / "base.yaml").read_text(encoding="utf-8")
+    updated = _patch_agent_models(
+        text,
+        {"backend": "deepseek", "model": "deepseek-v4-flash"},
+    )
+    msg, data = _validate_base_yaml(updated)
+    assert data is not None
+    assert "Base config valid" in msg
+    assert data["agents"]["backend"] == "deepseek"
+    assert data["agents"]["model"] == "deepseek-v4-flash"

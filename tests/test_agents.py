@@ -316,6 +316,25 @@ def test_anthropic_client_instantiates_and_returns_string_with_mock():
         assert all(m["role"] != "system" for m in kwargs["messages"])
 
 
+def test_deepseek_client_instantiates_and_returns_string_with_mock():
+    with patch("openai.OpenAI") as openai_cls:
+        instance = MagicMock()
+        openai_cls.return_value = instance
+        response = MagicMock()
+        response.choices = [MagicMock(message=MagicMock(content="deep reply"))]
+        response.usage = MagicMock(prompt_tokens=7, completion_tokens=2)
+        instance.chat.completions.create.return_value = response
+
+        from collusionlab.agents.backends.deepseek_client import DeepSeekModelClient
+
+        c = DeepSeekModelClient(model_name="deepseek-v4-flash", api_key="x")
+        out = c.generate([{"role": "user", "content": "hi"}])
+        assert out == "deep reply"
+        assert c.input_tokens == 7
+        assert c.output_tokens == 2
+        assert c.cost_estimate() > 0
+
+
 def test_backend_registry_resolves_lazily():
     backends = registered_backends()
     # Trigger lazy import path.
@@ -323,3 +342,7 @@ def test_backend_registry_resolves_lazily():
         client = get_model_client("openai", model_name="gpt-4o-mini", api_key="sk-test")
     assert client.model_name == "gpt-4o-mini"
     assert "openai" in registered_backends()
+    with patch("openai.OpenAI"):
+        deep_client = get_model_client("deepseek", model_name="deepseek-v4-flash", api_key="x")
+    assert deep_client.model_name == "deepseek-v4-flash"
+    assert "deepseek" in registered_backends()

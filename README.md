@@ -44,7 +44,7 @@ collusionlab/
 │       │   └── pricing/        # Calvano-style repeated pricing game
 │       ├── agents/             # LLM agent wrappers and model clients
 │       │   ├── model_client.py
-│       │   ├── backends/       # OpenAI and Anthropic backends
+│       │   ├── backends/       # OpenAI, Anthropic, and DeepSeek backends
 │       │   ├── memory.py
 │       │   └── llm_agent.py
 │       ├── runner/             # Experiment and sweep runners
@@ -71,6 +71,7 @@ collusionlab/
 - [Mamba](https://mamba.readthedocs.io/) or [Micromamba](https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html) for environment management
 - An OpenAI API key (required for the default backend)
 - An Anthropic API key (optional, for the Anthropic backend)
+- A DeepSeek API key (optional, for the DeepSeek backend)
 
 ### 1. Create the environment
 
@@ -97,6 +98,7 @@ cp .env.example .env
 ```dotenv
 OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=...   # optional
+DEEPSEEK_API_KEY=...    # optional
 ```
 
 ### 3. Install the package (editable)
@@ -146,7 +148,7 @@ environment:
   monopoly_price: 10
 
 agent:
-  backend: openai      # openai | anthropic
+  backend: openai      # openai | anthropic | deepseek
   model: gpt-4o-mini
   memory_window: 5
   temperature: 0.2

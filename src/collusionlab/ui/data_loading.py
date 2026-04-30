@@ -20,6 +20,7 @@ except ImportError:
     _HAS_STREAMLIT = False
 
 logger = logging.getLogger(__name__)
+UI_PREFS_PATH = Path("data/raw/_ui_prefs/recent_configs.json")
 
 
 # ---------------------------------------------------------------------------
@@ -88,6 +89,33 @@ def list_sweeps(raw_dir: Path | str) -> list[dict]:
 
     sweeps.sort(key=lambda s: s["started_at"], reverse=True)
     return sweeps
+
+
+def load_recent_configs() -> dict[str, str]:
+    """Load persisted recent config selections for UI selectors."""
+    if not UI_PREFS_PATH.exists():
+        return {}
+    try:
+        data = json.loads(UI_PREFS_PATH.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {str(k): str(v) for k, v in data.items()}
+
+
+def get_recent_config(key: str) -> str | None:
+    """Read one recent config entry by key."""
+    val = load_recent_configs().get(key)
+    return val if isinstance(val, str) and val else None
+
+
+def set_recent_config(key: str, config_name: str) -> None:
+    """Persist one recent config entry by key."""
+    data = load_recent_configs()
+    data[key] = config_name
+    UI_PREFS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    UI_PREFS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
 def load_sweep_manifest(path: Path | str) -> dict | None:

@@ -270,3 +270,31 @@ def test_judge_path_hard_rule_still_fires(_scripted_backend):
     event = mgr.check(log, [])
     assert event["penalty_applied"] is True
     assert event["policy_decision"]["hard_rule_triggered"] is True
+
+
+def test_from_config_llm_judge_deepseek_backend():
+    from unittest.mock import patch
+
+    from collusionlab.runner.config import OversightConfig
+
+    with patch("openai.OpenAI") as openai_cls:
+        instance = MagicMock()
+        openai_cls.return_value = instance
+        response = MagicMock()
+        response.choices = [MagicMock(message=MagicMock(content="VERDICT: NO\nEVIDENCE: NONE\nREASONING: stub."))]
+        response.usage = MagicMock(prompt_tokens=5, completion_tokens=4)
+        instance.chat.completions.create.return_value = response
+
+        config = OversightConfig(
+            mode="audit-penalty",
+            audit_probability=1.0,
+            penalty_factor=0.5,
+            llm_judge_enabled=True,
+            llm_judge_backend="deepseek",
+            llm_judge_model="deepseek-v4-flash",
+        )
+        env = MagicMock()
+        env.reward_elevation_baseline.return_value = (2.0, 6.0)
+        mgr = OversightManager.from_config(config, seed=0, env=env)
+        assert mgr.judge_client is not None
+        assert mgr.judge_client.model_name == "deepseek-v4-flash"

@@ -8,7 +8,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from collusionlab.ui.run_page import _validate_yaml
+from collusionlab.ui.run_page import (
+    _build_selector_options,
+    _patch_agent_models,
+    _patch_auditor_models,
+    _validate_yaml,
+)
 
 
 def test_run_page_validate_yaml_accepts_base_config():
@@ -24,3 +29,35 @@ def test_run_page_validate_yaml_reports_parse_error():
     assert cfg is None
     assert err is not None
     assert "YAML parse error" in err
+
+
+def test_patch_agent_models_updates_backend_and_model():
+    text = (ROOT / "configs" / "base.yaml").read_text(encoding="utf-8")
+    updated = _patch_agent_models(
+        text,
+        {"backend": "deepseek", "model": "deepseek-v4-flash"},
+    )
+    cfg, err = _validate_yaml(updated)
+    assert err is None
+    assert cfg is not None
+    assert cfg.agents.backend == "deepseek"
+    assert cfg.agents.model == "deepseek-v4-flash"
+
+
+def test_patch_auditor_models_updates_judge_fields():
+    text = (ROOT / "configs" / "pricing_audit.yaml").read_text(encoding="utf-8")
+    updated = _patch_auditor_models(
+        text,
+        {"llm_judge_backend": "deepseek", "llm_judge_model": "deepseek-v4-flash"},
+    )
+    cfg, err = _validate_yaml(updated)
+    assert err is None
+    assert cfg is not None
+    assert cfg.oversight.llm_judge_backend == "deepseek"
+    assert cfg.oversight.llm_judge_model == "deepseek-v4-flash"
+
+
+def test_build_selector_options_marks_recent_config():
+    opts = _build_selector_options(["base.yaml", "pricing_audit.yaml"], "base.yaml")
+    assert opts[0] == "(custom)"
+    assert "base.yaml (most recent)" in opts
