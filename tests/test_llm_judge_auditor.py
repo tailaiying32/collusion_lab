@@ -239,7 +239,7 @@ def test_judge_path_check_does_not_crash_on_unflagged_round(_scripted_backend):
     assert event["audited"] is True
     assert event["penalty_applied"] is False
     pd = event["policy_decision"]
-    assert pd["enforcement_mode"] == "judge_or_behavior"
+    assert pd["enforcement_mode"] == "judge_only"
     assert pd["hard_rule_triggered"] is False
 
 

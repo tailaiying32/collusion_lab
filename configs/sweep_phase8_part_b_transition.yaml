@@ -40,4 +40,4 @@ overrides:
       include_auditor_notice: true
       llm_judge_enabled: true
       llm_judge_model: gpt-4o-mini
-      llm_judge_enforcement: judge_or_behavior
+      llm_judge_enforcement: judge_only

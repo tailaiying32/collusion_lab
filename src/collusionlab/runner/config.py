@@ -80,7 +80,7 @@ class OversightConfig(BaseModel):
     llm_judge_prompt: str = "prompts/auditor_judge.txt"
     llm_judge_enforcement: Literal[
         "judge_or_behavior", "judge_only", "behavior_only"
-    ] = "judge_or_behavior"
+    ] = "judge_only"
 
     model_config = {"extra": "forbid"}
 

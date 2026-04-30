@@ -30,5 +30,5 @@ oversight:
   penalty_factor: 0.5
   llm_judge_enabled: true
   llm_judge_model: gpt-4o-mini
-  llm_judge_enforcement: judge_or_behavior
+  llm_judge_enforcement: judge_only
 output_dir: data/raw

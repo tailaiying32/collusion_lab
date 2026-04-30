@@ -288,6 +288,13 @@ class TestCollusionOnset:
         if speed is not None:
             assert speed >= 0.0
 
+    def test_adaptive_min_duration_detects_late_short_run_onset(self):
+        run = _build_run_data(_colluding_trajectory(20, onset=17))
+        onset = collusion.collusion_onset_round(
+            run, elevation_threshold=0.3, min_duration=None
+        )
+        assert onset is not None
+
 
 class TestCollusionSeries:
     def test_action_convergence_declining(self):
@@ -393,14 +400,24 @@ class TestTransitionDetection:
 
 
 class TestImplicitCoordination:
-    def test_price_follow_rate_high_for_matching_actions(self):
+    def test_price_follow_rate_high_for_lag_following_without_convergence(self):
+        actions = [[2, 10], [10, 2], [2, 10], [10, 2], [2, 10], [10, 2]]
+        rounds = [
+            _make_round(i + 1, a, [1.5, 1.5])
+            for i, a in enumerate(actions)
+        ]
+        run = _build_run_data(rounds)
+        pf = concealment.price_follow_rate(run)
+        assert pf > 0.5
+
+    def test_price_follow_rate_low_when_only_converged(self):
         rounds = [
             _make_round(i + 1, [10, 10], [2.0, 2.0])
             for i in range(10)
         ]
         run = _build_run_data(rounds)
         pf = concealment.price_follow_rate(run)
-        assert pf > 0.5
+        assert pf == pytest.approx(0.0)
 
     def test_price_follow_rate_low_for_divergent_actions(self):
         import random
