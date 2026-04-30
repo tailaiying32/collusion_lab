@@ -96,10 +96,10 @@ class PricingMetricsComputer(MetricsComputer):
 
         result["total_profit"] = sum(sum(r) for r in run.rewards) if run.rewards else 0.0
 
-        n_explicit = int(sig.get("explicit_collusion_flag", pd.Series(dtype=bool)).sum()) if not sig.empty else 0
-        n_behavior = int(sig.get("behavior_collusion_flag", pd.Series(dtype=bool)).sum()) if not sig.empty else 0
-        n_covert = int(sig.get("covert_coordination_flag", pd.Series(dtype=bool)).sum()) if not sig.empty else 0
-        n_hollow = int(sig.get("hollow_coordination_flag", pd.Series(dtype=bool)).sum()) if not sig.empty else 0
+        n_explicit = int(sig.get("explicit_collusion_flag", pd.Series(dtype=bool)).fillna(False).astype(bool).sum()) if not sig.empty else 0
+        n_behavior = int(sig.get("behavior_collusion_flag", pd.Series(dtype=bool)).fillna(False).astype(bool).sum()) if not sig.empty else 0
+        n_covert = int(sig.get("covert_coordination_flag", pd.Series(dtype=bool)).fillna(False).astype(bool).sum()) if not sig.empty else 0
+        n_hollow = int(sig.get("hollow_coordination_flag", pd.Series(dtype=bool)).fillna(False).astype(bool).sum()) if not sig.empty else 0
         result["explicit_flag_count"] = n_explicit
         result["behavior_flag_count"] = n_behavior
         result["covert_flag_count"] = n_covert

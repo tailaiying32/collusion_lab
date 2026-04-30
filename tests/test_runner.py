@@ -175,10 +175,10 @@ def test_experiment_log_schema(tmp_path):
         assert len(sig["reward_elevation_pre_penalty"]) == 2
         assert len(sig["reward_elevation_post_penalty"]) == 2
         assert sig["reward_elevation"] == sig["reward_elevation_post_penalty"]
-        # No oversight → all flags False.
+        # No oversight → explicit/behavior/hollow are False, covert is unknown.
         assert sig["explicit_collusion_flag"] is False
         assert sig["behavior_collusion_flag"] is False
-        assert sig["covert_coordination_flag"] is False
+        assert sig["covert_coordination_flag"] is None
         assert sig["hollow_coordination_flag"] is False
 
 
@@ -287,6 +287,20 @@ def test_compute_signals_tracks_pre_and_post_penalty_elevation():
     assert signals["explicit_collusion_flag"] is False
     assert signals["covert_coordination_flag"] is True
     assert signals["hollow_coordination_flag"] is False
+
+
+def test_compute_signals_sets_covert_unknown_when_not_audited():
+    signals = Experiment._compute_signals(
+        actions=[10, 10],
+        rewards_pre_penalty=[9.0, 9.0],
+        rewards_post_penalty=[9.0, 9.0],
+        elevation_baseline=(1.0, 9.0),
+        audit_event=None,
+        behavior_threshold=0.7,
+    )
+    assert signals["behavior_collusion_flag"] is True
+    assert signals["explicit_collusion_flag"] is False
+    assert signals["covert_coordination_flag"] is None
 
 
 def test_manifest_totals_include_llm_judge_client_costs(tmp_path):
