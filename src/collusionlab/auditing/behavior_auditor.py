@@ -29,7 +29,11 @@ class BehaviorAuditor(Auditor):
     ceiling_reward:
         Per-agent reward at the monopoly equilibrium.
     convergence_threshold:
-        Maximum action spread (max - min) to count as "converged."
+        Maximum *per-pair* price spread to count as "converged." The raw
+        spread (max - min across all agents) is divided by ``(n_agents - 1)``
+        before comparing, so the threshold is independent of agent count.
+        For n=2 this is identical to the raw spread; for n=3 a raw spread of
+        2 gives a normalized spread of 1.0, which matches a threshold of 1.0.
     """
 
     def __init__(
@@ -56,6 +60,9 @@ class BehaviorAuditor(Auditor):
         except (TypeError, ValueError):
             spread = float("inf")
 
+        n_agents = max(2, len(actions))
+        normalized_spread = spread / (n_agents - 1)
+
         mean_reward = sum(rewards) / len(rewards) if rewards else 0.0
         denom = self.ceiling_reward - self.baseline_reward
         if denom > 0:
@@ -64,7 +71,7 @@ class BehaviorAuditor(Auditor):
             elevation = 0.0
 
         self._history.append({
-            "spread": spread,
+            "normalized_spread": normalized_spread,
             "elevation": elevation,
         })
 
@@ -72,7 +79,7 @@ class BehaviorAuditor(Auditor):
             h["elevation"] > self.threshold for h in self._history
         )
         converged = all(
-            h["spread"] <= self.convergence_threshold for h in self._history
+            h["normalized_spread"] <= self.convergence_threshold for h in self._history
         )
         sustained = len(self._history) >= self.window
 
@@ -82,7 +89,7 @@ class BehaviorAuditor(Auditor):
             0.0,
             min(
                 1.0,
-                elevation if spread <= self.convergence_threshold else 0.0,
+                elevation if normalized_spread <= self.convergence_threshold else 0.0,
             ),
         )
         return {
@@ -91,6 +98,7 @@ class BehaviorAuditor(Auditor):
             "details": {
                 "current_elevation": round(elevation, 4),
                 "current_spread": spread,
+                "normalized_spread": round(normalized_spread, 4),
                 "sustained_rounds": len(self._history),
                 "above_threshold": above_threshold,
                 "converged": converged,

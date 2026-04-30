@@ -37,16 +37,21 @@ def test_calvano_published_equilibria_match_paper():
     assert math.isclose(d.monopoly_price(), 1.9250, abs_tol=1e-3)
 
 
-def test_calvano_calibrated_equilibria_round_to_grid_targets():
-    """The calibrated parameters in configs/base.yaml round to Nash=8, monopoly=10."""
+def test_calvano_config_auto_calibrates_equilibria():
+    """PricingConfig auto-computes nash_price and monopoly_price from the demand model."""
     import yaml
+    from collusionlab.environments.pricing.config import PricingConfig
 
     with (ROOT / "configs" / "base.yaml").open() as f:
-        cfg = yaml.safe_load(f)
-    params = cfg["environment"]["demand_params"]
-    d = CalvanoDemand(n_agents=cfg["environment"]["n_agents"], **params)
-    assert round(d.nash_price()) == cfg["environment"]["nash_price"]
-    assert round(d.monopoly_price()) == cfg["environment"]["monopoly_price"]
+        raw = yaml.safe_load(f)
+    env_raw = {k: v for k, v in raw["environment"].items() if not k.startswith("_")}
+    cfg = PricingConfig(**env_raw)
+
+    params = env_raw["demand_params"]
+    n = env_raw["n_agents"]
+    d = CalvanoDemand(n_agents=n, **params)
+    assert cfg.nash_price == round(d.nash_price())
+    assert cfg.monopoly_price == round(d.monopoly_price())
 
 
 def test_calvano_quantities_sum_below_one_due_to_outside_option():

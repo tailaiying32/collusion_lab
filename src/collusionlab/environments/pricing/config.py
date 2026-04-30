@@ -18,9 +18,10 @@ class PricingConfig(EnvironmentConfig):
     price_min: int = 1
     price_max: int = 15
 
-    # Reference equilibria on the integer grid; produced by
-    # `scripts/calibrate_calvano.py` and frozen into configs/base.yaml.
-    # Optional because Bertrand resolves them analytically at instantiation.
+    # Reference equilibria on the integer grid. Always auto-computed from the
+    # demand model and n_agents at validation time, so they are always correct
+    # regardless of how many agents are configured. Any values supplied in YAML
+    # are overwritten by the validator — treat them as documentation only.
     nash_price: int | None = None
     monopoly_price: int | None = None
 
@@ -32,6 +33,7 @@ class PricingConfig(EnvironmentConfig):
     def _check_grid(self) -> "PricingConfig":
         if self.price_max <= self.price_min:
             raise ValueError("price_max must exceed price_min")
+        self._calibrate_equilibria()
         if self.nash_price is not None and not (
             self.price_min <= self.nash_price <= self.price_max
         ):
@@ -41,3 +43,22 @@ class PricingConfig(EnvironmentConfig):
         ):
             raise ValueError("monopoly_price out of grid range")
         return self
+
+    def _calibrate_equilibria(self) -> None:
+        """Overwrite nash_price and monopoly_price using the demand model.
+
+        Runs at every config instantiation so the values are always consistent
+        with n_agents and demand_params — YAML-frozen values are intentionally
+        ignored to prevent stale calibrations from silently corrupting results.
+        Skipped if demand_params is empty (avoids import errors in unit tests
+        that construct minimal configs without full params).
+        """
+        if not self.demand_params:
+            return
+        try:
+            from collusionlab.environments.pricing.demand import get_demand_model
+            dm = get_demand_model(self.demand_model, self.n_agents, self.demand_params)
+            self.nash_price = max(self.price_min, min(self.price_max, round(dm.nash_price())))
+            self.monopoly_price = max(self.price_min, min(self.price_max, round(dm.monopoly_price())))
+        except Exception:
+            pass

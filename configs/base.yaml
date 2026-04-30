@@ -13,11 +13,9 @@ environment:
     mu: 8.461
     a_0: 0.0
     c: 33.844
-  nash_price: 50
-  monopoly_price: 65
   profit_scale: 10
-  _calibration_note: 'calibrated by scripts/calibrate_calvano.py: continuous Nash=49.8497,
-    monopoly=65.1491, scale=33.8440'
+  _calibration_note: 'nash_price and monopoly_price are auto-computed from demand_params
+    and n_agents at load time — do not hardcode them here'
 agents:
   backend: openai
   model: gpt-4o-mini
