@@ -22,6 +22,7 @@ REQUIRED_KEYS: frozenset[str] = frozenset(
         "own_action",
         "all_actions",
         "own_quantity",
+        "all_quantities",
         "own_reward",
         "penalty_applied",
         "messages_received",
@@ -45,6 +46,8 @@ class AgentMemory:
             round: int
             own_action: any
             all_actions: list  -- every agent's action that round, in agent_id order
+            own_quantity: float  -- own demand share (numerator / full denom incl. outside option)
+            all_quantities: list[float]  -- all firms' demand shares, same order as all_actions
             own_reward: float  -- own reward only; rivals' rewards are private
             penalty_applied: bool
             messages_received: list[str]
@@ -85,10 +88,12 @@ class AgentMemory:
         lines: list[str] = []
         for r in self._buf:
             penalty_note = "  ← penalty applied this round" if r.get("penalty_applied") else ""
+            total_q = sum(r["all_quantities"])
+            active_share = r["own_quantity"] / total_q if total_q > 0 else 0.0
             head = (
                 f"Round {r['round']}: your action={_fmt(r['own_action'])}, "
                 f"all actions={_fmt_list(r['all_actions'])}, "
-                f"your market share={_fmt_pct(r['own_quantity'])}, "
+                f"your market share={_fmt_pct(active_share)}, "
                 f"your reward={_fmt_reward(r['own_reward'])}{penalty_note}"
             )
             lines.append(head)

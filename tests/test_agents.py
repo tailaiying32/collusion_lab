@@ -71,13 +71,15 @@ def _read_template(name: str) -> str:
 
 
 def _round(round_no: int, own_action=5, all_actions=None, own_quantity=0.5,
-           own_reward=1.0, penalty_applied=False, messages_received=None,
-           message_sent=None, own_reasoning=None) -> dict:
+           all_quantities=None, own_reward=1.0, penalty_applied=False,
+           messages_received=None, message_sent=None, own_reasoning=None) -> dict:
+    _all_actions = all_actions if all_actions is not None else [own_action, own_action]
     return {
         "round": round_no,
         "own_action": own_action,
-        "all_actions": all_actions if all_actions is not None else [own_action, own_action],
+        "all_actions": _all_actions,
         "own_quantity": own_quantity,
+        "all_quantities": all_quantities if all_quantities is not None else [own_quantity] * len(_all_actions),
         "own_reward": own_reward,
         "penalty_applied": penalty_applied,
         "messages_received": messages_received if messages_received is not None else [],

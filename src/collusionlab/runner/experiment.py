@@ -119,6 +119,7 @@ class Experiment:
                         "own_action": actions[agent.agent_id],
                         "all_actions": list(actions),
                         "own_quantity": next_obs["quantities"][agent.agent_id],
+                        "all_quantities": list(next_obs["quantities"]),
                         "own_reward": rewards[agent.agent_id],
                         "penalty_applied": penalty_applied,
                         "messages_received": delivered_by_agent[agent.agent_id],
