@@ -5,15 +5,16 @@ environment:
   n_agents: 2
   n_rounds: 25
   seed: 42
-  demand_model: bertrand
+  demand_model: linear_differentiated
   price_min: 1
   price_max: 100
   demand_params:
+    a: 100.0
+    b: 3.0
+    d: 2.0
     c: 60.0
-    Q: 1.0
-    reservation_price: 80.0
-  profit_scale: 10
-  forced_initial_price: 60.0
+  profit_scale: 1.0
+  forced_initial_price: 70
 agents:
   backend: openai
   model: gpt-4o-mini

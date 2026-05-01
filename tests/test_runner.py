@@ -259,10 +259,24 @@ def test_experiment_manifest_fields(tmp_path):
     assert manifest["total_output_tokens"] >= 0
     assert manifest["total_cost_estimate_usd"] == 0.0  # scripted backend
     assert manifest["total_fallback_events"] == 0
+    assert manifest["steganography_analysis"]["message_rounds"] == 0
+    assert manifest["steganography_analysis"]["steganographic_signature"] is False
     assert len(manifest["agents"]) == 2
+    assert manifest["agents"][0]["agent_seed"] != manifest["agents"][1]["agent_seed"]
     for a in manifest["agents"]:
         assert a["backend"] == "scripted"
         assert "input_tokens" in a and "output_tokens" in a
+        assert "agent_seed" in a
+
+
+def test_agent_seeds_are_deterministic_from_environment_seed():
+    seeds_a = Experiment._derive_agent_seeds(42, 2)
+    seeds_b = Experiment._derive_agent_seeds(42, 2)
+    seeds_c = Experiment._derive_agent_seeds(43, 2)
+
+    assert seeds_a == seeds_b
+    assert seeds_a != seeds_c
+    assert seeds_a[0] != seeds_a[1]
 
 
 def test_experiment_output_layout(tmp_path):

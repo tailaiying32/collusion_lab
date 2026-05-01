@@ -9,6 +9,7 @@ from collusionlab.environments.pricing.demand import (
     BertrandDemand,
     CalvanoDemand,
     DemandModel,
+    LinearDifferentiatedDemand,
     get_demand_model,
 )
 from collusionlab.environments.pricing.game import PricingGame
@@ -19,5 +20,6 @@ __all__ = [
     "DemandModel",
     "CalvanoDemand",
     "BertrandDemand",
+    "LinearDifferentiatedDemand",
     "get_demand_model",
 ]

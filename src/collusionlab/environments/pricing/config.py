@@ -13,7 +13,7 @@ from collusionlab.environments.base import EnvironmentConfig
 class PricingConfig(EnvironmentConfig):
     env_type: Literal["pricing"] = "pricing"
 
-    demand_model: Literal["calvano", "bertrand"] = "calvano"
+    demand_model: Literal["calvano", "bertrand", "linear_differentiated"] = "linear_differentiated"
     demand_params: dict = Field(default_factory=dict)
 
     price_min: int = 1
@@ -36,11 +36,11 @@ class PricingConfig(EnvironmentConfig):
     forced_initial_price: int | None = None
 
     def default_prompt_dir(self) -> str:
-        return (
-            "prompts/pricing_bertrand"
-            if self.demand_model == "bertrand"
-            else "prompts/pricing"
-        )
+        if self.demand_model == "bertrand":
+            return "prompts/pricing_bertrand"
+        if self.demand_model == "linear_differentiated":
+            return "prompts/pricing_linear_differentiated"
+        return "prompts/pricing"
 
     @model_validator(mode="after")
     def _check_grid(self) -> "PricingConfig":

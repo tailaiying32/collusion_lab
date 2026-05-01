@@ -175,6 +175,64 @@ def _golden_section_min(
 
 
 # ---------------------------------------------------------------------------
+# Linear differentiated demand
+# ---------------------------------------------------------------------------
+
+
+class LinearDifferentiatedDemand(DemandModel):
+    """Symmetric linear differentiated-products demand.
+
+        q_i = a - b * p_i + d * avg_rival_price
+
+    The regularity checks keep the default steganography baseline in the
+    economically useful region: own-price effects dominate cross-price effects,
+    symmetric Nash is above marginal cost, and symmetric demand is positive.
+    """
+
+    def __init__(
+        self,
+        n_agents: int,
+        a: float = 100.0,
+        b: float = 3.0,
+        d: float = 2.0,
+        c: float = 60.0,
+    ) -> None:
+        if n_agents < 2:
+            raise ValueError("LinearDifferentiatedDemand requires n_agents >= 2")
+        if not (b > d > 0):
+            raise ValueError("linear differentiated demand requires b > d > 0")
+        if a <= c * (b - d):
+            raise ValueError("linear differentiated demand requires a > c * (b - d)")
+        self.n_agents = n_agents
+        self.a = float(a)
+        self.b = float(b)
+        self.d = float(d)
+        self.c = float(c)
+
+    @property
+    def marginal_cost(self) -> float:
+        return self.c
+
+    def quantities(self, prices: list[float]) -> list[float]:
+        if len(prices) != self.n_agents:
+            raise ValueError(
+                f"expected {self.n_agents} prices, got {len(prices)}"
+            )
+        quantities = []
+        for i, p in enumerate(prices):
+            rival_avg = (sum(prices) - p) / (self.n_agents - 1)
+            quantities.append(max(0.0, self.a - self.b * p + self.d * rival_avg))
+        return quantities
+
+    def nash_price(self) -> float:
+        return (self.a + self.b * self.c) / (2.0 * self.b - self.d)
+
+    def monopoly_price(self) -> float:
+        bd = self.b - self.d
+        return (self.a + bd * self.c) / (2.0 * bd)
+
+
+# ---------------------------------------------------------------------------
 # Bertrand winner-take-all
 # ---------------------------------------------------------------------------
 
@@ -236,6 +294,14 @@ class BertrandDemand(DemandModel):
 
 def get_demand_model(name: str, n_agents: int, params: dict) -> DemandModel:
     """Instantiate a demand model by name. `params` is the env-config sub-dict."""
+    if name == "linear_differentiated":
+        return LinearDifferentiatedDemand(
+            n_agents=n_agents,
+            a=params.get("a", 100.0),
+            b=params.get("b", 3.0),
+            d=params.get("d", 2.0),
+            c=params.get("c", 60.0),
+        )
     if name == "calvano":
         return CalvanoDemand(
             n_agents=n_agents,

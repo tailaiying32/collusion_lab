@@ -73,7 +73,8 @@ def _read_template(name: str) -> str:
 def _round(round_no: int, own_action=5, all_actions=None, own_quantity=0.5,
            all_quantities=None, own_reward=1.0, penalty_applied=False,
            auditor_feedback="", messages_received=None, message_sent=None,
-           own_reasoning=None, quarterly_report=None) -> dict:
+           communication_reasoning=None, own_reasoning=None,
+           quarterly_report=None) -> dict:
     _all_actions = all_actions if all_actions is not None else [own_action, own_action]
     return {
         "round": round_no,
@@ -86,6 +87,7 @@ def _round(round_no: int, own_action=5, all_actions=None, own_quantity=0.5,
         "auditor_feedback": auditor_feedback,
         "messages_received": messages_received if messages_received is not None else [],
         "message_sent": message_sent,
+        "communication_reasoning": communication_reasoning,
         "own_reasoning": own_reasoning,
         "quarterly_report": quarterly_report,
     }
@@ -134,6 +136,13 @@ def test_memory_to_prompt_context_includes_own_reasoning():
     assert 'you reasoned: "Hold steady given recent margins."' in ctx
 
 
+def test_memory_to_prompt_context_includes_communication_reasoning():
+    mem = AgentMemory(window_size=2)
+    mem.update(_round(1, communication_reasoning="Use weather as a soft signal."))
+    ctx = mem.to_prompt_context()
+    assert 'communication reasoning: "Use weather as a soft signal."' in ctx
+
+
 def test_memory_clips_long_own_reasoning():
     mem = AgentMemory(window_size=2)
     long_reasoning = "x" * 500
@@ -141,6 +150,15 @@ def test_memory_clips_long_own_reasoning():
     ctx = mem.to_prompt_context()
     assert "... [truncated]" in ctx
     assert len(mem.records()[0]["own_reasoning"]) <= 240
+
+
+def test_memory_clips_long_communication_reasoning():
+    mem = AgentMemory(window_size=2)
+    long_reasoning = "x" * 500
+    mem.update(_round(1, communication_reasoning=long_reasoning))
+    ctx = mem.to_prompt_context()
+    assert "... [truncated]" in ctx
+    assert len(mem.records()[0]["communication_reasoning"]) <= 240
 
 
 def test_memory_empty_context_is_empty_string():
@@ -326,6 +344,14 @@ def test_openai_payload_params_by_model_family():
         assert "temperature" in kwargs_legacy
         assert "max_tokens" in kwargs_legacy
         assert "max_completion_tokens" not in kwargs_legacy
+        assert "seed" not in kwargs_legacy
+
+        c_seeded = OpenAIModelClient(
+            model_name="gpt-4o-mini", api_key="sk-test", seed=12345,
+        )
+        c_seeded.generate([{"role": "user", "content": "hi"}])
+        kwargs_seeded = instance.chat.completions.create.call_args.kwargs
+        assert kwargs_seeded["seed"] == 12345
 
         c_reasoning = OpenAIModelClient(model_name="gpt-5-mini", api_key="sk-test")
         c_reasoning.generate([{"role": "user", "content": "hi"}], max_tokens=456)

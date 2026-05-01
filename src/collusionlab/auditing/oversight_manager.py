@@ -94,6 +94,7 @@ class OversightManager:
         config: "OversightConfig",
         seed: int,
         env: "GameEnvironment",
+        communication_mode: str | None = None,
     ) -> "OversightManager":
         """Build an ``OversightManager`` from config + environment context."""
         if config.mode == "none":
@@ -108,7 +109,10 @@ class OversightManager:
         auditors: list[Auditor] = []
 
         judge_client = None
-        if config.llm_judge_enabled:
+        judge_enabled = bool(config.llm_judge_enabled)
+        judge_has_messages = communication_mode != "none"
+        judge_active = judge_enabled and judge_has_messages
+        if judge_active:
             from pathlib import Path
 
             from collusionlab.agents.model_client import get_model_client
@@ -121,7 +125,7 @@ class OversightManager:
             )
             prompt_template = Path(config.llm_judge_prompt).read_text(encoding="utf-8")
             auditors.append(LLMJudgeAuditor(judge_client, prompt_template))
-        else:
+        elif not judge_enabled:
             auditors.append(
                 TranscriptAuditor(
                     keywords=list(config.keywords),
@@ -141,7 +145,7 @@ class OversightManager:
             convergence_threshold=config.convergence_threshold,
         ))
 
-        if not config.llm_judge_enabled:
+        if not judge_enabled:
             auditors.append(TemporalAuditor())
 
         return cls(
@@ -150,7 +154,7 @@ class OversightManager:
             penalty_factor=config.penalty_factor,
             fusion_policy=(
                 None
-                if config.llm_judge_enabled
+                if judge_enabled
                 else RiskFusionPolicy(
                     weights=config.risk_weights,
                     threshold=config.risk_threshold,
@@ -159,7 +163,7 @@ class OversightManager:
             ),
             enforcement_policy=config.enforcement_policy,
             llm_judge_enforcement=(
-                config.llm_judge_enforcement if config.llm_judge_enabled else None
+                config.llm_judge_enforcement if judge_enabled else None
             ),
             judge_client=judge_client,
             seed=seed,

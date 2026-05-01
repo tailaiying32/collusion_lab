@@ -16,9 +16,10 @@ CollusionLab addresses the follow-on question:
 This decomposes into two linked subproblems:
 
 - **Onset** — which conditions (communication access, repeated interaction,
-  memory, agent count) produce collusion. Tested under Calvano logit demand
-  (symmetric to prior work) and Bertrand winner-take-all demand (where the
-  Bertrand paradox makes tacit collusion especially notable).
+  memory, agent count) produce collusion. The default baseline is now smooth
+  linear differentiated demand with stable Nash and closed-form monopoly
+  references; Calvano logit and Bertrand winner-take-all remain comparison
+  demand models.
 - **Concealment** — the novel contribution: whether probabilistic auditing and
   profit penalties eliminate collusion, or instead produce *covert coordination*
   (clean language, above-Nash profits) or *hollow coordination* (collusion
@@ -31,7 +32,7 @@ each had to reimplement from scratch: a pricing environment, an agent loop, a
 communication layer, an auditing pipeline, and a persistence backend — all as
 composable, config-driven building blocks:
 
-- **Pluggable demand models** — Calvano logit or Bertrand winner-take-all;
+- **Pluggable demand models** — linear differentiated, Calvano logit, or Bertrand winner-take-all;
   additional market structures can be added without modifying agent or runner code
 - **Pluggable LLM backends** — OpenAI, Anthropic, and DeepSeek are supported
   behind a single `ModelClient` interface; local GPU inference is available via
@@ -56,7 +57,7 @@ cheap to define, run, and compare across conditions.
 | | Agrawal et al. (2025) | CollusionLab |
 |---|---|---|
 | **Core question** | Do agents collude? | Do agents adapt under oversight? |
-| **Market structure** | Continuous double auction | Calvano logit + Bertrand (pluggable) |
+| **Market structure** | Continuous double auction | Linear differentiated + Calvano + Bertrand (pluggable) |
 | **Oversight** | Binary (CEO urgency / overseer) | Probabilistic audit + penalty; LLM judge or behavioral |
 | **Detection** | Pricing metrics | Multi-signal auditing layer (transcript, behavioral, temporal, LLM judge, risk fusion) |
 | **Storage** | None | SQLite or PostgreSQL via unified `RunStore` protocol |
@@ -69,7 +70,7 @@ Six modules, cleanly separated:
 
 | Module | Location | Purpose |
 |---|---|---|
-| Environment engine | `src/collusionlab/environments/` | Repeated pricing games; Calvano and Bertrand demand models |
+| Environment engine | `src/collusionlab/environments/` | Repeated pricing games; linear differentiated, Calvano, and Bertrand demand models |
 | Agent layer | `src/collusionlab/agents/` | LLM wrappers with bounded memory and pluggable backends |
 | Experiment runner | `src/collusionlab/runner/` | Single runs and parallel parameter sweeps |
 | Oversight + detection | `src/collusionlab/auditing/` | Transcript, behavioral, temporal, and LLM-judge auditors; risk fusion; penalty enforcement |
@@ -104,7 +105,7 @@ collusionlab/
 ├── data/
 │   ├── raw/                    # Round-level JSONL logs (flat file backend)
 │   └── processed/              # Derived metrics tables
-├── prompts/pricing/            # System and turn prompt templates
+├── prompts/pricing*/           # System and turn prompt templates by demand model
 ├── notebooks/                  # Jupyter analysis notebooks
 ├── scripts/                    # Utility scripts (e.g. Calvano calibration)
 ├── tests/                      # Unit tests
@@ -216,6 +217,18 @@ Four navigation pages:
 - **Sweep** *(forthcoming)* — parameter grid preview and background sweep execution
 - **Compare** *(forthcoming)* — heatmaps and cross-run comparison for sweep results
 
+### Offline Steganography Analysis
+
+```bash
+PYTHONPATH=src python scripts/analyze_steganography.py data/raw/<run_id>
+```
+
+This research-only script reads completed `log.jsonl` files and reports whether
+clean-looking messages predict coordinated upward price movement. It never feeds
+back into rewards, prompts, or in-game audit decisions. The same compact summary
+is also written to each completed run's `manifest.json` under
+`steganography_analysis` and surfaced in the UI/sweep metrics.
+
 ### Configuration
 
 Every run is fully specified by a YAML config file:
@@ -225,9 +238,14 @@ environment:
   n_agents: 2
   n_rounds: 25
   seed: 42
-  demand_model: bertrand   # or: calvano
-  nash_price: 8
-  monopoly_price: 10
+  demand_model: linear_differentiated   # or: calvano, bertrand
+  demand_params:
+    a: 100.0
+    b: 3.0
+    d: 2.0
+    c: 60.0
+  nash_price: 70      # auto-computed from demand_params
+  monopoly_price: 80  # auto-computed from demand_params
 
 agent:
   backend: openai         # openai | anthropic | deepseek
@@ -252,6 +270,7 @@ Pre-built variant configs:
 | `pricing_public_chat.yaml` | public | none |
 | `pricing_private_chat.yaml` | private | none |
 | `pricing_audit.yaml` | public | audit + penalty |
+| `base_bertrand.yaml` | none | none |
 
 ## Key Metrics
 

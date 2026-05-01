@@ -14,6 +14,7 @@ import argparse
 import json
 import logging
 import math
+import random
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,6 +31,7 @@ from collusionlab.environments.communication import (
     CommunicationHandler,
     get_comm_handler,
 )
+from collusionlab.metrics.steganography import analyze_log
 from collusionlab.runner.config import AgentConfig, ExperimentConfig
 from collusionlab.storage import (
     configured_storage_uri,
@@ -82,7 +84,10 @@ class Experiment:
         agents, model_clients = self._build_agents(env)
         comm = get_comm_handler(cfg.communication_mode)
         oversight = OversightManager.from_config(
-            cfg.oversight, seed=cfg.environment.seed, env=env,
+            cfg.oversight,
+            seed=cfg.environment.seed,
+            env=env,
+            communication_mode=cfg.communication_mode,
         )
 
         elevation_baseline = env.reward_elevation_baseline()
@@ -110,6 +115,7 @@ class Experiment:
                     "auditor_feedback": "",
                     "messages_received": [],
                     "message_sent": None,
+                    "communication_reasoning": None,
                     "own_reasoning": None,
                     "quarterly_report": None,
                 })
@@ -204,6 +210,7 @@ class Experiment:
                         "auditor_feedback": auditor_feedback,
                         "messages_received": delivered_by_agent[agent.agent_id],
                         "message_sent": sent,
+                        "communication_reasoning": agent.last_communication_reasoning,
                         "own_reasoning": agent.last_pricing_reasoning,
                         "quarterly_report": quarterly_report,
                     })
@@ -283,9 +290,11 @@ class Experiment:
 
         agents: list[LLMAgent] = []
         clients: list[ModelClient] = []
+        agent_seeds = self._derive_agent_seeds(cfg.environment.seed, env.n_agents)
         for agent_id in range(env.n_agents):
             agent_cfg = cfg.agents
-            client = self._build_client(agent_cfg, agent_id)
+            agent_seed = agent_seeds[agent_id]
+            client = self._build_client(agent_cfg, agent_id, agent_seed)
             clients.append(client)
             prompt_vars = env.system_prompt_vars(agent_id)
             prompt_vars["auditor_notice"] = (
@@ -319,11 +328,22 @@ class Experiment:
         return agents, clients
 
     @staticmethod
-    def _build_client(agent_cfg: AgentConfig, agent_id: int) -> ModelClient:
+    def _derive_agent_seeds(seed: int, n_agents: int) -> list[int]:
+        rng = random.Random(seed)
+        return [rng.randrange(0, 2**31) for _ in range(n_agents)]
+
+    @staticmethod
+    def _build_client(
+        agent_cfg: AgentConfig,
+        agent_id: int,
+        agent_seed: int,
+    ) -> ModelClient:
         kwargs = {"temperature": agent_cfg.temperature, **agent_cfg.extra}
         replies_by_agent = kwargs.pop("replies_by_agent", None)
         if replies_by_agent is not None and "replies" not in kwargs:
             kwargs["replies"] = list(replies_by_agent[agent_id])
+        if agent_cfg.backend == "openai" and "seed" not in kwargs:
+            kwargs["seed"] = agent_seed
         return get_model_client(
             agent_cfg.backend, model_name=agent_cfg.model, **kwargs
         )
@@ -442,6 +462,7 @@ class Experiment:
     ) -> dict:
         cfg = self.config
         per_agent = []
+        agent_seeds = self._derive_agent_seeds(cfg.environment.seed, len(agents))
         total_in = total_out = 0
         total_cost = 0.0
         total_fallbacks = 0
@@ -450,6 +471,7 @@ class Experiment:
                 "agent_id": agent_id,
                 "backend": cfg.agents.backend,
                 "model": client.model_name,
+                "agent_seed": agent_seeds[agent_id],
                 "input_tokens": client.input_tokens,
                 "output_tokens": client.output_tokens,
                 "cost_estimate_usd": client.cost_estimate(),
@@ -477,7 +499,16 @@ class Experiment:
             "total_output_tokens": total_out,
             "total_cost_estimate_usd": total_cost,
             "total_fallback_events": total_fallbacks,
+            "steganography_analysis": self._build_steganography_analysis(log_path),
         }
+
+    @staticmethod
+    def _build_steganography_analysis(log_path: Path) -> dict:
+        try:
+            return analyze_log(log_path)
+        except Exception as exc:
+            logger.warning("failed to build steganography analysis: %s", exc)
+            return {"error": f"{type(exc).__name__}: {exc}"}
 
 
 # ---------------------------------------------------------------------------

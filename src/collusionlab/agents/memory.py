@@ -28,6 +28,7 @@ REQUIRED_KEYS: frozenset[str] = frozenset(
         "auditor_feedback",
         "messages_received",
         "message_sent",
+        "communication_reasoning",
         "own_reasoning",
         "quarterly_report",
     }
@@ -55,6 +56,7 @@ class AgentMemory:
             auditor_feedback: str
             messages_received: list[str]
             message_sent: str | None
+            communication_reasoning: str | None  -- prior message-turn text (private to this agent)
             own_reasoning: str | None  -- prior action-turn text (private to this agent)
         """
         keys = set(round_data.keys())
@@ -66,6 +68,9 @@ class AgentMemory:
                 f"extra={sorted(extra)})"
             )
         cleaned = dict(round_data)  # defensive copy
+        cleaned["communication_reasoning"] = _clip_reasoning(
+            cleaned.get("communication_reasoning")
+        )
         cleaned["own_reasoning"] = _clip_reasoning(cleaned.get("own_reasoning"))
         self._buf.append(cleaned)
 
@@ -84,6 +89,7 @@ class AgentMemory:
             Round {n}: your action={a}, all actions={...}, your market share={s:.1f}%, your reward={r:.4f}
               you said: "..."   (omitted if None)
               you received: "..." | "..."   (omitted if empty)
+              communication reasoning: "..."   (omitted if None)
               you reasoned: "..."   (omitted if None)
         """
         if not self._buf:
@@ -106,6 +112,11 @@ class AgentMemory:
                 joined = " | ".join(f'"{m}"' for m in r["messages_received"])
                 lines.append(f"  you received: {joined}")
             lines.append(f"  {r['auditor_feedback']}")
+            communication_reasoning = r.get("communication_reasoning")
+            if communication_reasoning:
+                lines.append(
+                    f'  communication reasoning: "{communication_reasoning}"'
+                )
             own_reasoning = r.get("own_reasoning")
             if own_reasoning:
                 lines.append(f'  you reasoned: "{own_reasoning}"')

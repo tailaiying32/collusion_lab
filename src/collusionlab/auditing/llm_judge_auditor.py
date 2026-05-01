@@ -7,6 +7,10 @@ verdict, evidence quote, and one-sentence reasoning. Replaces TranscriptAuditor
 
 Conservative on failure: malformed responses or model errors return
 ``flagged=False`` so a single bad call cannot create a spurious penalty.
+
+Deliberately surface-level: this auditor is for same-round explicit language
+only. Cross-round code or message-action pattern detection belongs in offline
+research analysis, not in the in-game enforcement path.
 """
 
 from __future__ import annotations

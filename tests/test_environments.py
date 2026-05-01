@@ -20,6 +20,7 @@ from collusionlab.environments.pricing import (  # noqa: F401  -- triggers regis
     BertrandDemand,
     CalvanoDemand,
     DemandModel,
+    LinearDifferentiatedDemand,
     PricingConfig,
     PricingGame,
 )
@@ -54,6 +55,38 @@ def test_calvano_config_auto_calibrates_equilibria():
     assert cfg.monopoly_price == round(d.monopoly_price())
 
 
+def test_pricing_prompt_defaults_follow_demand_model():
+    linear = PricingConfig(
+        n_agents=2,
+        n_rounds=10,
+        seed=0,
+        demand_model="linear_differentiated",
+        demand_params={"a": 100.0, "b": 3.0, "d": 2.0, "c": 60.0},
+        price_min=1,
+        price_max=100,
+    )
+    calvano = PricingConfig(
+        n_agents=2,
+        n_rounds=10,
+        seed=0,
+        demand_model="calvano",
+        demand_params={"a": 2.0, "mu": 0.25, "a_0": 0.0, "c": 1.0},
+    )
+    bertrand = PricingConfig(
+        n_agents=2,
+        n_rounds=10,
+        seed=0,
+        demand_model="bertrand",
+        demand_params={"Q": 1.0, "c": 60.0, "reservation_price": 80.0},
+        price_min=1,
+        price_max=100,
+    )
+
+    assert linear.default_prompt_dir() == "prompts/pricing_linear_differentiated"
+    assert calvano.default_prompt_dir() == "prompts/pricing"
+    assert bertrand.default_prompt_dir() == "prompts/pricing_bertrand"
+
+
 def test_calvano_quantities_sum_below_one_due_to_outside_option():
     d = CalvanoDemand(n_agents=2, a=2.0, mu=0.25, a_0=0.0, c=1.0)
     q = d.quantities([1.5, 1.5])
@@ -70,15 +103,61 @@ def test_calvano_nash_solution_is_near_fixed_point():
 
 
 def test_demand_model_interface_satisfied():
-    """Both demand models conform to the DemandModel ABC."""
+    """All demand models conform to the DemandModel ABC."""
     cd = CalvanoDemand(n_agents=2, a=2.0, mu=0.25, a_0=0.0, c=1.0)
     bd = BertrandDemand(n_agents=2, Q=1.0, c=1.0, reservation_price=10.0)
-    for m in (cd, bd):
+    ld = LinearDifferentiatedDemand(n_agents=2, a=100.0, b=3.0, d=2.0, c=60.0)
+    for m in (cd, bd, ld):
         assert isinstance(m, DemandModel)
         assert isinstance(m.quantities([2.0, 2.0]), list)
         assert isinstance(m.nash_price(), float)
         assert isinstance(m.monopoly_price(), float)
         assert isinstance(m.marginal_cost, float)
+
+
+def test_linear_differentiated_default_equilibria_are_closed_form():
+    d = LinearDifferentiatedDemand(n_agents=2, a=100.0, b=3.0, d=2.0, c=60.0)
+    assert d.nash_price() == pytest.approx(70.0)
+    assert d.monopoly_price() == pytest.approx(80.0)
+    assert d.quantities([70.0, 70.0]) == pytest.approx([30.0, 30.0])
+
+
+def test_linear_differentiated_nash_is_strict_best_response():
+    d = LinearDifferentiatedDemand(n_agents=2, a=100.0, b=3.0, d=2.0, c=60.0)
+    nash = d.nash_price()
+
+    def profit(p_own: float) -> float:
+        q = d.quantities([p_own, nash])[0]
+        return (p_own - d.marginal_cost) * q
+
+    assert profit(nash) > profit(nash + 1.0)
+    assert profit(nash) > profit(nash - 1.0)
+
+
+def test_linear_differentiated_monopoly_profit_exceeds_nash_profit():
+    d = LinearDifferentiatedDemand(n_agents=2, a=100.0, b=3.0, d=2.0, c=60.0)
+
+    def symmetric_profit(p: float) -> float:
+        q = d.quantities([p, p])[0]
+        return (p - d.marginal_cost) * q
+
+    assert symmetric_profit(d.monopoly_price()) > symmetric_profit(d.nash_price())
+
+
+def test_linear_differentiated_config_auto_calibrates_equilibria():
+    cfg = PricingConfig(
+        env_type="pricing",
+        n_agents=2,
+        n_rounds=5,
+        seed=0,
+        demand_model="linear_differentiated",
+        demand_params={"a": 100.0, "b": 3.0, "d": 2.0, "c": 60.0},
+        price_min=1,
+        price_max=100,
+        forced_initial_price=70,
+    )
+    assert cfg.nash_price == 70
+    assert cfg.monopoly_price == 80
 
 
 def test_bertrand_winner_takes_all():

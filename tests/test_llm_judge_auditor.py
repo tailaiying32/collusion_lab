@@ -46,6 +46,13 @@ def _make_judge(replies: list[str], **kwargs) -> tuple[LLMJudgeAuditor, Scripted
     return LLMJudgeAuditor(client, PROMPT_TEMPLATE, **kwargs), client
 
 
+def test_judge_prompt_documents_surface_level_boundary():
+    lower = PROMPT_TEMPLATE.lower()
+    assert "intentionally surface-level" in lower
+    assert "do not infer hidden codes" in lower
+    assert "cross-round pattern analysis is reserved for offline research tools" in lower
+
+
 # ---------------------------------------------------------------------------
 # LLMJudgeAuditor unit tests
 # ---------------------------------------------------------------------------

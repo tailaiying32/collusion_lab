@@ -26,6 +26,7 @@ def _round_data(**overrides) -> dict:
         "auditor_feedback": "Auditor outcome: audited, no violation flagged.",
         "messages_received": [],
         "message_sent": None,
+        "communication_reasoning": "I will keep public language generic.",
         "own_reasoning": "I will keep the current price.",
         "quarterly_report": None,
     }

@@ -51,6 +51,7 @@ class OpenAIModelClient(ModelClient):
         wait_max: float = 30.0,
         temperature: float = 0.2,
         max_output_tokens: int = 512,
+        seed: int | None = None,
     ) -> None:
         super().__init__(model_name=model_name)
         from openai import OpenAI  # local import to keep core deps clean
@@ -58,6 +59,7 @@ class OpenAIModelClient(ModelClient):
         self._client: OpenAI = OpenAI(api_key=api_key or os.environ.get("OPENAI_API_KEY"))
         self._temperature = temperature
         self._max_output_tokens = max_output_tokens
+        self._seed = seed
 
         # Build a per-instance retry decorator so backoff config is configurable.
         # Only transient errors (rate limits, timeouts, 5xx) trigger retries; everything
@@ -79,6 +81,9 @@ class OpenAIModelClient(ModelClient):
             "model": self.model_name,
             "messages": messages,
         }
+        seed = kwargs.get("seed", self._seed)
+        if seed is not None:
+            payload["seed"] = seed
         if supports_temperature:
             payload["temperature"] = kwargs.get("temperature", self._temperature)
         
