@@ -3,8 +3,8 @@
 Loads an ExperimentConfig, instantiates the environment + agents + comm handler +
 oversight manager, and runs the round loop. Writes one JSON object per round to
 `{output_dir}/{run_id}/log.jsonl` and a `manifest.json` alongside it. Each round
-record includes a per-agent `reasoning` list (private action-turn text, not
-visible to other agents or the auditor). Designed so Phase 4 (real comm +
+record includes a per-agent `reasoning` list (private communication/pricing
+text, not visible to other agents or the auditor). Designed so Phase 4 (real comm +
 oversight) plugs in via registry without changing this file.
 """
 
@@ -112,7 +112,13 @@ class Experiment:
                     delivered = comm.deliver_messages(agent.agent_id, raw_messages)
                     delivered_by_agent[agent.agent_id] = list(delivered)
                     actions.append(agent.decide_action(obs, delivered))
-                reasoning = [a.last_reasoning for a in agents]
+                reasoning = [
+                    {
+                        "communication": a.last_communication_reasoning,
+                        "pricing": a.last_pricing_reasoning,
+                    }
+                    for a in agents
+                ]
 
                 # (c) Step the env.
                 rewards, next_obs, done = env.step(actions)
@@ -163,7 +169,7 @@ class Experiment:
                         "auditor_feedback": auditor_feedback,
                         "messages_received": delivered_by_agent[agent.agent_id],
                         "message_sent": sent,
-                        "own_reasoning": agent.last_reasoning,
+                        "own_reasoning": agent.last_pricing_reasoning,
                         "quarterly_report": quarterly_report,
                     })
 
@@ -231,6 +237,9 @@ class Experiment:
         system_template = (prompt_dir / "system.txt").read_text(encoding="utf-8")
         action_template = (prompt_dir / "action_turn.txt").read_text(encoding="utf-8")
         message_template = (prompt_dir / "message_turn.txt").read_text(encoding="utf-8")
+        communication_reasoning_template = (
+            prompt_dir / "communication_reasoning_turn.txt"
+        ).read_text(encoding="utf-8")
         auditor_notice_template = (prompt_dir / "auditor_notice.txt").read_text(encoding="utf-8")
 
         agents: list[LLMAgent] = []
@@ -262,6 +271,7 @@ class Experiment:
                     system_prompt=system_prompt,
                     action_turn_template=action_template,
                     message_turn_template=message_template,
+                    communication_reasoning_template=communication_reasoning_template,
                     comm_mode=cfg.communication_mode,
                     n_rounds=cfg.environment.n_rounds,
                     strategic_guidance=strategic_guidance,

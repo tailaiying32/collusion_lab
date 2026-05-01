@@ -163,6 +163,29 @@ def get_signal(row: dict, key: str, default: Any = None) -> Any:
     return default
 
 
+def normalize_reasoning(reasoning: Any) -> list[dict[str, str | None]]:
+    """Normalize old and new private reasoning log shapes for UI rendering.
+
+    New logs store per-agent dicts with ``communication`` and ``pricing`` keys.
+    Older logs stored each agent's pricing reasoning as a plain string.
+    """
+    if not isinstance(reasoning, list):
+        return []
+    normalized: list[dict[str, str | None]] = []
+    for entry in reasoning:
+        if isinstance(entry, dict):
+            normalized.append({
+                "communication": entry.get("communication"),
+                "pricing": entry.get("pricing"),
+            })
+        else:
+            normalized.append({
+                "communication": None,
+                "pricing": str(entry) if entry is not None else None,
+            })
+    return normalized
+
+
 def build_run_index(raw_dir: Path | str) -> pd.DataFrame:
     """Return normalized run selector metadata as a DataFrame."""
     runs = list_runs(raw_dir)

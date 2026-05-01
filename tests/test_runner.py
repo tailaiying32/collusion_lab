@@ -169,7 +169,10 @@ def test_experiment_log_schema(tmp_path):
         } == set(sig)
         assert sig["action_spread"] == abs(7 - 9)
         assert isinstance(sig["reward_elevation"], list)
-        assert rec["reasoning"] == ["7", "9"]
+        assert rec["reasoning"] == [
+            {"communication": None, "pricing": "7"},
+            {"communication": None, "pricing": "9"},
+        ]
         assert len(rec["reasoning"]) == 2
         assert len(sig["reward_elevation"]) == 2
         assert len(sig["reward_elevation_pre_penalty"]) == 2
@@ -198,6 +201,28 @@ def test_experiment_reproducibility_byte_identical(tmp_path):
     log_a = (tmp_path / "a" / "run-a" / "log.jsonl").read_bytes()
     log_b = (tmp_path / "b" / "run-a" / "log.jsonl").read_bytes()
     assert log_a == log_b
+
+
+def test_public_comm_logs_private_communication_reasoning_separately(tmp_path):
+    cfg = _make_config(
+        n_rounds=1,
+        output_dir=str(tmp_path),
+        replies_per_agent=[
+            ["private plan A", "public msg A", "7"],
+            ["private plan B", "public msg B", "9"],
+        ],
+        comm_mode="public",
+    )
+    Experiment(cfg).run()
+    rec = json.loads((tmp_path / "test-run" / "log.jsonl").read_text().strip())
+    assert rec["messages"] == [
+        {"from": 0, "to": "all", "content": "public msg A"},
+        {"from": 1, "to": "all", "content": "public msg B"},
+    ]
+    assert rec["reasoning"] == [
+        {"communication": "private plan A", "pricing": "7"},
+        {"communication": "private plan B", "pricing": "9"},
+    ]
 
 
 def test_experiment_manifest_fields(tmp_path):
@@ -326,8 +351,8 @@ def test_manifest_totals_include_llm_judge_client_costs(tmp_path):
         n_rounds=n_rounds,
         output_dir=str(tmp_path),
         replies_per_agent=[
-            ["coordination?", "8", "coordination?", "8"],
-            ["noted", "8", "noted", "8"],
+            ["think msg 1", "coordination?", "8", "think msg 2", "coordination?", "8"],
+            ["think msg 1", "noted", "8", "think msg 2", "noted", "8"],
         ],
         comm_mode="public",
     )

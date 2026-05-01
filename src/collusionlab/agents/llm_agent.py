@@ -31,6 +31,7 @@ class LLMAgent:
         system_prompt: str,
         action_turn_template: str,
         message_turn_template: str,
+        communication_reasoning_template: str,
         comm_mode: CommMode,
         n_rounds: int,
         strategic_guidance: str = "",
@@ -43,11 +44,16 @@ class LLMAgent:
         self.system_prompt = system_prompt
         self.action_turn_template = action_turn_template
         self.message_turn_template = message_turn_template
+        self.communication_reasoning_template = communication_reasoning_template
         self.comm_mode: CommMode = comm_mode
         self.n_rounds = n_rounds
         self.strategic_guidance = strategic_guidance
         self.max_action_attempts = max_action_attempts
         self.fallback_events: list[dict] = []
+        self.last_communication_reasoning: str | None = None
+        self.last_pricing_reasoning: str | None = None
+        # Backward-compatible alias for code that still expects the old action
+        # reasoning attribute name.
         self.last_reasoning: str | None = None
 
     # ------------------------------------------------------------------
@@ -61,6 +67,7 @@ class LLMAgent:
         step()'s obs thereafter (see Phase 2.7 spec).
         """
         if self.comm_mode == "none":
+            self.last_communication_reasoning = None
             return None
         prompt = self.message_turn_template.format(
             round_number=self._current_round_number(obs),
@@ -69,11 +76,36 @@ class LLMAgent:
             memory_context=self._memory_context(),
             strategic_guidance=self.strategic_guidance,
         )
-        messages = [
+        reasoning_prompt = self.communication_reasoning_template.format(
+            round_number=self._current_round_number(obs),
+            n_rounds=self.n_rounds,
+            window_size=self.memory.window_size,
+            memory_context=self._memory_context(),
+            strategic_guidance=self.strategic_guidance,
+        )
+        reasoning_messages = [
+            {"role": "system", "content": self.system_prompt},
+            {"role": "user", "content": reasoning_prompt},
+        ]
+        self.last_communication_reasoning = self.model_client.generate(
+            reasoning_messages
+        ).strip()
+        message_messages = [
             {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": prompt},
+            {
+                "role": "assistant",
+                "content": self.last_communication_reasoning,
+            },
+            {
+                "role": "user",
+                "content": (
+                    "Now send only the outward-facing message text. "
+                    "Do not include your private reasoning."
+                ),
+            },
         ]
-        return self.model_client.generate(messages).strip()
+        return self.model_client.generate(message_messages).strip()
 
     def decide_action(self, obs: dict, messages_received: list[str]) -> Any:
         """Action turn. Returns a parsed action; falls back to env.default_action()
@@ -98,6 +130,7 @@ class LLMAgent:
             text = self.model_client.generate(conversation)
             try:
                 action = self.env.parse_action(text)
+                self.last_pricing_reasoning = text
                 self.last_reasoning = text
                 return action
             except ValueError as e:
@@ -119,7 +152,8 @@ class LLMAgent:
             "attempts": attempts,
         }
         self.fallback_events.append(event)
-        self.last_reasoning = attempts[-1]["raw"] if attempts else None
+        self.last_pricing_reasoning = attempts[-1]["raw"] if attempts else None
+        self.last_reasoning = self.last_pricing_reasoning
         logger.warning(
             "agent %d fell back to default_action after %d failed attempts",
             self.agent_id,

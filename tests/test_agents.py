@@ -163,6 +163,7 @@ def _make_agent(client: ModelClient, comm_mode="none", n_rounds=5,
         system_prompt="SYSTEM",
         action_turn_template=_read_template("action_turn"),
         message_turn_template=_read_template("message_turn"),
+        communication_reasoning_template=_read_template("communication_reasoning_turn"),
         comm_mode=comm_mode,
         n_rounds=n_rounds,
     )
@@ -175,6 +176,7 @@ def test_decide_action_first_attempt_success():
     obs = game.reset(seed=0)
     action = agent.decide_action(obs, messages_received=[])
     assert action == 7
+    assert agent.last_pricing_reasoning == "7"
     assert agent.last_reasoning == "7"
     assert len(client.calls) == 1
     assert agent.fallback_events == []
@@ -192,7 +194,7 @@ def test_decide_action_retries_with_error_message_then_succeeds():
     second = client.calls[1]
     assert any("could not be parsed" in m["content"] for m in second)
     assert agent.fallback_events == []
-    assert agent.last_reasoning == "9"
+    assert agent.last_pricing_reasoning == "9"
 
 
 def test_decide_action_falls_back_to_default_after_three_failures():
@@ -207,7 +209,7 @@ def test_decide_action_falls_back_to_default_after_three_failures():
     assert event["agent_id"] == 0
     assert len(event["attempts"]) == 3
     assert all("error" in a for a in event["attempts"])
-    assert agent.last_reasoning == "definitely not"
+    assert agent.last_pricing_reasoning == "definitely not"
 
 
 def test_compose_message_returns_none_when_comm_mode_none():
@@ -215,23 +217,31 @@ def test_compose_message_returns_none_when_comm_mode_none():
     agent, game = _make_agent(client, comm_mode="none")
     obs = game.reset(seed=0)
     assert agent.compose_message(obs) is None
+    assert agent.last_communication_reasoning is None
     assert client.calls == []
 
 
 def test_compose_message_uses_reset_obs_in_round_1_then_step_obs():
-    client = ScriptedModelClient(["hello", "round 2 chat"])
+    client = ScriptedModelClient([
+        "I should reassure them.",
+        "hello",
+        "I should acknowledge the last round.",
+        "round 2 chat",
+    ])
     agent, game = _make_agent(client, comm_mode="public")
     # Round 1: obs is the reset obs.
     reset_obs = game.reset(seed=0)
     msg1 = agent.compose_message(reset_obs)
     assert msg1 == "hello"
+    assert agent.last_communication_reasoning == "I should reassure them."
     # The user prompt for round 1 should reference Round 1.
     assert "Round 1" in client.calls[0][1]["content"]
     # Step the game; round-2 compose_message uses the post-step obs.
     _, step_obs, _ = game.step([7, 7])
     msg2 = agent.compose_message(step_obs)
     assert msg2 == "round 2 chat"
-    assert "Round 2" in client.calls[1][1]["content"]
+    assert agent.last_communication_reasoning == "I should acknowledge the last round."
+    assert "Round 2" in client.calls[2][1]["content"]
 
 
 def test_decide_action_includes_action_space_description_in_prompt():
@@ -246,13 +256,23 @@ def test_decide_action_includes_action_space_description_in_prompt():
 
 
 def test_prompts_include_window_size_header_text():
-    client = ScriptedModelClient(["hello", "7"])
+    client = ScriptedModelClient(["Private comm notes.", "hello", "7"])
     agent, game = _make_agent(client, comm_mode="public", memory_window=3)
     obs = game.reset(seed=0)
     agent.compose_message(obs)
     agent.decide_action(obs, messages_received=[])
     assert "Last 3 rounds, chronological order:" in client.calls[0][1]["content"]
-    assert "Last 3 rounds, chronological order:" in client.calls[1][1]["content"]
+    assert "Last 3 rounds, chronological order:" in client.calls[2][1]["content"]
+
+
+def test_compose_message_keeps_private_reasoning_out_of_public_message():
+    client = ScriptedModelClient(["Hold at a coded signal.", "Steady as discussed."])
+    agent, game = _make_agent(client, comm_mode="public")
+    obs = game.reset(seed=0)
+    msg = agent.compose_message(obs)
+    assert agent.last_communication_reasoning == "Hold at a coded signal."
+    assert msg == "Steady as discussed."
+    assert "Hold at a coded signal." in client.calls[1][2]["content"]
 
 
 # ---------------------------------------------------------------------------

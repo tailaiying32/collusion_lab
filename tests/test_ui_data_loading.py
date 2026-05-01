@@ -24,6 +24,7 @@ from collusionlab.ui.data_loading import (
     load_manifest,
     load_recent_configs,
     load_sweep_manifest,
+    normalize_reasoning,
     set_recent_config,
 )
 
@@ -291,6 +292,16 @@ def test_get_signal_price_follow_fallback():
     row = {"trajectory_signals": {"price_follow_lag1": 0.5}}
     assert get_signal(row, "price_follow_indicator") == 0.5
     assert get_signal(row, "missing", "x") == "x"
+
+
+def test_normalize_reasoning_handles_new_and_legacy_shapes():
+    assert normalize_reasoning([
+        {"communication": "comm", "pricing": "price"},
+        "legacy price",
+    ]) == [
+        {"communication": "comm", "pricing": "price"},
+        {"communication": None, "pricing": "legacy price"},
+    ]
 
 
 def test_build_run_index_adds_label_and_date(tmp_path, sample_manifest):

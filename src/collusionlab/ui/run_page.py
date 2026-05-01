@@ -25,7 +25,11 @@ from pydantic import ValidationError
 
 from collusionlab.runner.config import ExperimentConfig
 from collusionlab.runner.experiment import Experiment
-from collusionlab.ui.data_loading import get_recent_config, set_recent_config
+from collusionlab.ui.data_loading import (
+    get_recent_config,
+    normalize_reasoning,
+    set_recent_config,
+)
 
 # Load .env once at import so OPENAI_API_KEY is visible to the worker thread.
 load_dotenv()
@@ -507,50 +511,74 @@ def _render_round_card(line: dict) -> None:
         else:
             st.markdown(f"> **Agent {sender} → Agent {to}:** {content}")
 
-    reasoning = line.get("reasoning") or []
-    has_reasoning = any(r for r in reasoning)
+    reasoning = normalize_reasoning(line.get("reasoning") or [])
+    has_communication_reasoning = any(r.get("communication") for r in reasoning)
+    has_pricing_reasoning = any(r.get("pricing") for r in reasoning)
     has_audit = bool(audit_event and audit_event.get("results"))
 
-    if has_reasoning or has_audit:
-        with st.expander(f"Round {round_idx} — reasoning & audit", expanded=False,
-                         key=f"round_{round_idx}_details"):
-            if has_reasoning:
-                st.caption("Internal reasoning (private to each agent):")
-                for i, text in enumerate(reasoning):
-                    st.markdown(f"**Agent {i}:**")
-                    if text:
-                        st.markdown(f"> {text}")
-                    else:
-                        st.markdown("_No reasoning captured — fallback action._")
+    if has_communication_reasoning:
+        with st.expander(
+            f"Round {round_idx} - communication reasoning",
+            expanded=False,
+            key=f"round_{round_idx}_communication_reasoning",
+        ):
+            st.caption(
+                "Private to each agent - not visible to other agents, the game, "
+                "or the auditor."
+            )
+            for i, entry in enumerate(reasoning):
+                text = entry.get("communication")
+                if not text:
+                    continue
+                st.markdown(f"**Agent {i}:**")
+                st.markdown(f"> {text}")
 
-            if has_reasoning and has_audit:
-                st.divider()
+    if has_pricing_reasoning:
+        with st.expander(
+            f"Round {round_idx} - pricing reasoning",
+            expanded=False,
+            key=f"round_{round_idx}_pricing_reasoning",
+        ):
+            st.caption(
+                "Private to each agent - not visible to other agents, the game, "
+                "or the auditor."
+            )
+            for i, entry in enumerate(reasoning):
+                text = entry.get("pricing")
+                st.markdown(f"**Agent {i}:**")
+                if text:
+                    st.markdown(f"> {text}")
+                else:
+                    st.markdown("_No pricing reasoning captured - fallback action._")
 
-            if has_audit:
-                for result in audit_event.get("results", []) or []:
-                    name = result.get("auditor")
-                    details = result.get("details", {}) or {}
-                    if name == "llm_judge":
-                        if details.get("skipped"):
-                            st.caption("LLM judge: skipped (no messages this round).")
-                            continue
-                        verdict = details.get("verdict") or "—"
-                        st.markdown(f"**LLM judge:** {verdict}")
-                        if details.get("evidence"):
-                            st.markdown(f"> {details['evidence']}")
-                        if details.get("reasoning"):
-                            st.caption(details["reasoning"])
-                        if details.get("error"):
-                            st.warning(f"Judge call failed: {details['error']}")
-                    elif name == "behavior":
-                        elev = details.get("current_elevation")
-                        spread_d = details.get("current_spread")
-                        sustained = details.get("sustained_rounds")
-                        above = details.get("above_threshold")
-                        st.caption(
-                            f"Behavior: elevation={elev}, spread={spread_d}, "
-                            f"sustained_rounds={sustained}, above_threshold={above}"
-                        )
+    if has_audit:
+        with st.expander(f"Round {round_idx} - audit", expanded=False,
+                         key=f"round_{round_idx}_audit"):
+            for result in audit_event.get("results", []) or []:
+                name = result.get("auditor")
+                details = result.get("details", {}) or {}
+                if name == "llm_judge":
+                    if details.get("skipped"):
+                        st.caption("LLM judge: skipped (no messages this round).")
+                        continue
+                    verdict = details.get("verdict") or "â€”"
+                    st.markdown(f"**LLM judge:** {verdict}")
+                    if details.get("evidence"):
+                        st.markdown(f"> {details['evidence']}")
+                    if details.get("reasoning"):
+                        st.caption(details["reasoning"])
+                    if details.get("error"):
+                        st.warning(f"Judge call failed: {details['error']}")
+                elif name == "behavior":
+                    elev = details.get("current_elevation")
+                    spread_d = details.get("current_spread")
+                    sustained = details.get("sustained_rounds")
+                    above = details.get("above_threshold")
+                    st.caption(
+                        f"Behavior: elevation={elev}, spread={spread_d}, "
+                        f"sustained_rounds={sustained}, above_threshold={above}"
+                    )
+
 
     st.divider()
 

@@ -25,6 +25,7 @@ from collusionlab.ui.data_loading import (
     build_run_index,
     build_transcript_df,
     get_signal,
+    normalize_reasoning,
     list_sweeps,
     list_runs,
     load_log_rows,
@@ -1008,23 +1009,40 @@ def render_transcript_tab(rows: list[dict], metrics: dict | None = None):
                         content = _highlight_keyword(content, keyword_filter)
                         st.markdown(f"**Agent {sender}:** {content}")
 
-            reasoning = row.get("reasoning") or []
-            if any(r for r in reasoning):
-                n_non_empty = sum(1 for r in reasoning if r)
+            reasoning = normalize_reasoning(row.get("reasoning") or [])
+            comm_count = sum(1 for r in reasoning if r.get("communication"))
+            pricing_count = sum(1 for r in reasoning if r.get("pricing"))
+            if comm_count:
                 with st.expander(
-                    f"Internal reasoning ({n_non_empty} of {len(reasoning)} agents)"
+                    f"Communication reasoning ({comm_count} of {len(reasoning)} agents)"
                 ):
                     st.caption(
-                        "Private to each agent — not visible to other agents, "
+                        "Private to each agent - not visible to other agents, "
                         "the game, or the auditor."
                     )
-                    for agent_id, text in enumerate(reasoning):
+                    for agent_id, entry in enumerate(reasoning):
+                        text = entry.get("communication")
+                        if not text:
+                            continue
+                        st.markdown(f"**Agent {agent_id}:**")
+                        st.markdown(f"> {text}")
+
+            if pricing_count:
+                with st.expander(
+                    f"Pricing reasoning ({pricing_count} of {len(reasoning)} agents)"
+                ):
+                    st.caption(
+                        "Private to each agent - not visible to other agents, "
+                        "the game, or the auditor."
+                    )
+                    for agent_id, entry in enumerate(reasoning):
+                        text = entry.get("pricing")
                         st.markdown(f"**Agent {agent_id}:**")
                         if text:
                             st.markdown(f"> {text}")
                         else:
                             st.markdown(
-                                "_No reasoning captured — fallback action._"
+                                "_No pricing reasoning captured - fallback action._"
                             )
 
             # Audit event details
