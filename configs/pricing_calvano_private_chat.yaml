@@ -27,3 +27,6 @@ oversight:
   audit_probability: 0.25
   penalty_factor: 1.0
 output_dir: data/raw
+storage:
+  backend: postgres
+  uri: null

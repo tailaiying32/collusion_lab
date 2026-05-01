@@ -17,7 +17,7 @@ from typing import Any
 
 import pandas as pd
 
-from collusionlab.storage import SQLiteRunStore, parse_db_run_ref
+from collusionlab.storage import get_run_store, parse_db_run_ref
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +101,7 @@ class LogReader:
         db_ref = parse_db_run_ref(manifest_path)
         if db_ref is not None:
             uri, run_id = db_ref
-            store = SQLiteRunStore(uri)
+            store = get_run_store(uri)
             manifest = store.load_manifest(run_id)
             if manifest is None:
                 raise FileNotFoundError(f"run {run_id!r} not found in {uri!r}")

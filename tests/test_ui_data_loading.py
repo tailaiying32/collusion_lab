@@ -27,7 +27,13 @@ from collusionlab.ui.data_loading import (
     normalize_reasoning,
     set_recent_config,
 )
-from collusionlab.storage import SQLiteRunStore, make_db_run_ref
+from collusionlab.storage import (
+    SQLiteRunStore,
+    is_database_uri,
+    is_postgres_uri,
+    make_db_run_ref,
+    parse_db_run_ref,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -269,6 +275,15 @@ def test_sqlite_run_listing_and_loading(tmp_path, sample_manifest, sample_log_ro
     run_ref = make_db_run_ref(str(db_path), sample_manifest["run_id"])
     assert load_manifest(run_ref)["run_id"] == sample_manifest["run_id"]
     assert [r["round"] for r in load_log_rows(run_ref)] == [1, 2]
+
+
+def test_postgres_storage_uri_helpers():
+    uri = "postgresql://user:pass@example.neon.tech/collusionlab?sslmode=require"
+    run_ref = make_db_run_ref(uri, "run-123")
+
+    assert is_postgres_uri(uri)
+    assert is_database_uri(uri)
+    assert parse_db_run_ref(run_ref) == (uri, "run-123")
 
 
 # ---------------------------------------------------------------------------

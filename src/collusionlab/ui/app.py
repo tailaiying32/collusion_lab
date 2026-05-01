@@ -37,7 +37,7 @@ from collusionlab.ui.run_page import render_run_page
 from collusionlab.ui.sweep_page import render_sweep_page
 from collusionlab.metrics.base import LogReader, get_metrics_computer
 from collusionlab.metrics import collusion, concealment
-from collusionlab.storage import is_sqlite_uri
+from collusionlab.storage import is_database_uri
 import collusionlab.environments.pricing.metrics  # noqa: F401
 
 # ---------------------------------------------------------------------------
@@ -738,7 +738,7 @@ def page_analyze():
 
     import os
     raw_dir = os.getenv("COLLUSIONLAB_STORAGE_URL") or "data/raw"
-    if not is_sqlite_uri(str(raw_dir)) and not Path(raw_dir).exists():
+    if not is_database_uri(str(raw_dir)) and not Path(raw_dir).exists():
         st.warning("No runs found. `data/raw/` does not exist.")
         return
 

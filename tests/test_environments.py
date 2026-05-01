@@ -171,6 +171,20 @@ def test_bertrand_default_nash_price_respects_constrained_grid_floor():
     assert nash_profit == pytest.approx((cfg.price_min - 1.0) * (1.0 / cfg.n_agents))
 
 
+def test_system_prompt_vars_include_reservation_price():
+    cfg = _calibrated_config(
+        demand_model="bertrand",
+        demand_params={"Q": 1.0, "c": 1.0, "reservation_price": 10.0},
+        nash_price=None,
+        monopoly_price=None,
+        forced_initial_price=None,
+    )
+    game = PricingGame(cfg)
+    vars0 = game.system_prompt_vars(agent_id=0)
+    assert "reservation_price" in vars0
+    assert vars0["reservation_price"] == pytest.approx(10.0)
+
+
 def test_pricing_game_reset_is_deterministic():
     cfg = _calibrated_config(n_rounds=5)
     g1 = PricingGame(cfg)

@@ -11,7 +11,7 @@ import json
 import os
 import sqlite3
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 from urllib.parse import quote, unquote, urlparse
 
 
@@ -27,6 +27,35 @@ def is_sqlite_uri(uri: str | None) -> bool:
     if not uri:
         return False
     return uri.startswith("sqlite://") or uri.endswith(".db") or uri.endswith(".sqlite")
+
+
+def is_postgres_uri(uri: str | None) -> bool:
+    if not uri:
+        return False
+    return uri.startswith("postgresql://") or uri.startswith("postgres://")
+
+
+def is_database_uri(uri: str | None) -> bool:
+    return is_sqlite_uri(uri) or is_postgres_uri(uri)
+
+
+class RunStore(Protocol):
+    uri: str
+
+    def save_manifest(
+        self,
+        manifest: dict[str, Any],
+        status: str = "succeeded",
+        error: str | None = None,
+    ) -> None: ...
+
+    def append_round(self, row: dict[str, Any]) -> None: ...
+
+    def load_manifest(self, run_id: str) -> dict[str, Any] | None: ...
+
+    def load_rounds(self, run_id: str) -> list[dict[str, Any]]: ...
+
+    def list_runs(self) -> list[dict[str, Any]]: ...
 
 
 def sqlite_path_from_uri(uri: str) -> Path | str:
@@ -61,6 +90,49 @@ def parse_db_run_ref(ref: str | Path) -> tuple[str, str] | None:
     if not uri or not run_id:
         return None
     return uri, run_id
+
+
+def run_metadata_from_manifest(
+    manifest: dict[str, Any],
+    run_ref: str | Path,
+) -> dict[str, Any]:
+    config = manifest.get("config", {})
+    agents_cfg_raw = config.get("agents", {})
+    if isinstance(agents_cfg_raw, dict):
+        agents_cfg = agents_cfg_raw
+    elif (
+        isinstance(agents_cfg_raw, list)
+        and agents_cfg_raw
+        and isinstance(agents_cfg_raw[0], dict)
+    ):
+        agents_cfg = agents_cfg_raw[0]
+    else:
+        agents_cfg = {}
+    env_cfg = config.get("environment", {})
+    oversight_cfg = config.get("oversight", {})
+    return {
+        "run_id": manifest.get("run_id", ""),
+        "run_dir": run_ref,
+        "start_time": manifest.get("start_time", ""),
+        "env_type": manifest.get("env_type", config.get("env_type", "unknown")),
+        "comm_mode": config.get("communication_mode", "unknown"),
+        "oversight_mode": oversight_cfg.get("mode", "unknown"),
+        "n_rounds": env_cfg.get("n_rounds"),
+        "n_agents": env_cfg.get("n_agents"),
+        "firm_backend": agents_cfg.get("backend"),
+        "firm_model": agents_cfg.get("model"),
+        "memory_window": agents_cfg.get("memory_window"),
+        "audit_probability": oversight_cfg.get("audit_probability"),
+        "auditor_model": oversight_cfg.get("llm_judge_model"),
+    }
+
+
+def get_run_store(uri: str) -> RunStore:
+    if is_postgres_uri(uri):
+        return PostgresRunStore(uri)
+    if is_sqlite_uri(uri):
+        return SQLiteRunStore(uri)
+    raise ValueError(f"unsupported storage URI: {uri!r}")
 
 
 class SQLiteRunStore:
@@ -106,7 +178,12 @@ class SQLiteRunStore:
                 """
             )
 
-    def save_manifest(self, manifest: dict[str, Any], status: str = "succeeded") -> None:
+    def save_manifest(
+        self,
+        manifest: dict[str, Any],
+        status: str = "succeeded",
+        error: str | None = None,
+    ) -> None:
         run_id = str(manifest["run_id"])
         payload = json.dumps(manifest, sort_keys=True)
         with self._connect() as conn:
@@ -179,29 +256,190 @@ class SQLiteRunStore:
         records: list[dict[str, Any]] = []
         for run_id, manifest_json in rows:
             manifest = json.loads(manifest_json)
-            config = manifest.get("config", {})
-            agents_cfg_raw = config.get("agents", {})
-            if isinstance(agents_cfg_raw, dict):
-                agents_cfg = agents_cfg_raw
-            elif isinstance(agents_cfg_raw, list) and agents_cfg_raw and isinstance(agents_cfg_raw[0], dict):
-                agents_cfg = agents_cfg_raw[0]
-            else:
-                agents_cfg = {}
-            env_cfg = config.get("environment", {})
-            oversight_cfg = config.get("oversight", {})
-            records.append({
-                "run_id": manifest.get("run_id", run_id),
-                "run_dir": make_db_run_ref(self.uri, str(run_id)),
-                "start_time": manifest.get("start_time", ""),
-                "env_type": manifest.get("env_type", config.get("env_type", "unknown")),
-                "comm_mode": config.get("communication_mode", "unknown"),
-                "oversight_mode": oversight_cfg.get("mode", "unknown"),
-                "n_rounds": env_cfg.get("n_rounds"),
-                "n_agents": env_cfg.get("n_agents"),
-                "firm_backend": agents_cfg.get("backend"),
-                "firm_model": agents_cfg.get("model"),
-                "memory_window": agents_cfg.get("memory_window"),
-                "audit_probability": oversight_cfg.get("audit_probability"),
-                "auditor_model": oversight_cfg.get("llm_judge_model"),
-            })
+            records.append(
+                run_metadata_from_manifest(
+                    {**manifest, "run_id": manifest.get("run_id", run_id)},
+                    make_db_run_ref(self.uri, str(run_id)),
+                )
+            )
         return records
+
+
+class PostgresRunStore:
+    """Postgres-backed storage for run manifests and round JSON rows."""
+
+    def __init__(self, uri: str) -> None:
+        self.uri = uri
+        self._init_schema()
+
+    def _connect(self):
+        try:
+            import psycopg
+            from psycopg.rows import dict_row
+        except ImportError as exc:
+            raise RuntimeError(
+                "Postgres storage requires the 'psycopg[binary]' package. "
+                "Install/update the collusion_lab environment from environment.yml."
+            ) from exc
+        return psycopg.connect(self.uri, autocommit=True, row_factory=dict_row)
+
+    @staticmethod
+    def _jsonb(value: dict[str, Any]):
+        from psycopg.types.json import Jsonb
+
+        return Jsonb(value)
+
+    def _init_schema(self) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS runs (
+                    run_id TEXT PRIMARY KEY,
+                    env_type TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    start_time TIMESTAMPTZ,
+                    end_time TIMESTAMPTZ,
+                    communication_mode TEXT,
+                    oversight_mode TEXT,
+                    firm_backend TEXT,
+                    firm_model TEXT,
+                    n_rounds INTEGER,
+                    n_agents INTEGER,
+                    manifest_json JSONB NOT NULL,
+                    error TEXT,
+                    created_at TIMESTAMPTZ DEFAULT now(),
+                    updated_at TIMESTAMPTZ DEFAULT now()
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS round_logs (
+                    run_id TEXT NOT NULL,
+                    round INTEGER NOT NULL,
+                    row_json JSONB NOT NULL,
+                    created_at TIMESTAMPTZ DEFAULT now(),
+                    updated_at TIMESTAMPTZ DEFAULT now(),
+                    PRIMARY KEY (run_id, round),
+                    FOREIGN KEY (run_id) REFERENCES runs(run_id) ON DELETE CASCADE
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_runs_start_time ON runs (start_time DESC)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_runs_env_type ON runs (env_type)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_round_logs_run_round ON round_logs (run_id, round)"
+            )
+
+    def save_manifest(
+        self,
+        manifest: dict[str, Any],
+        status: str = "succeeded",
+        error: str | None = None,
+    ) -> None:
+        run_id = str(manifest["run_id"])
+        metadata = run_metadata_from_manifest(manifest, make_db_run_ref(self.uri, run_id))
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO runs (
+                    run_id, env_type, status, start_time, end_time,
+                    communication_mode, oversight_mode, firm_backend, firm_model,
+                    n_rounds, n_agents, manifest_json, error, updated_at
+                )
+                VALUES (
+                    %(run_id)s, %(env_type)s, %(status)s, %(start_time)s, %(end_time)s,
+                    %(communication_mode)s, %(oversight_mode)s, %(firm_backend)s,
+                    %(firm_model)s, %(n_rounds)s, %(n_agents)s, %(manifest_json)s,
+                    %(error)s, now()
+                )
+                ON CONFLICT(run_id) DO UPDATE SET
+                    env_type=excluded.env_type,
+                    status=excluded.status,
+                    start_time=excluded.start_time,
+                    end_time=excluded.end_time,
+                    communication_mode=excluded.communication_mode,
+                    oversight_mode=excluded.oversight_mode,
+                    firm_backend=excluded.firm_backend,
+                    firm_model=excluded.firm_model,
+                    n_rounds=excluded.n_rounds,
+                    n_agents=excluded.n_agents,
+                    manifest_json=excluded.manifest_json,
+                    error=excluded.error,
+                    updated_at=now()
+                """,
+                {
+                    "run_id": run_id,
+                    "env_type": str(metadata.get("env_type") or ""),
+                    "status": status,
+                    "start_time": manifest.get("start_time"),
+                    "end_time": manifest.get("end_time"),
+                    "communication_mode": metadata.get("comm_mode"),
+                    "oversight_mode": metadata.get("oversight_mode"),
+                    "firm_backend": metadata.get("firm_backend"),
+                    "firm_model": metadata.get("firm_model"),
+                    "n_rounds": metadata.get("n_rounds"),
+                    "n_agents": metadata.get("n_agents"),
+                    "manifest_json": self._jsonb(manifest),
+                    "error": error,
+                },
+            )
+
+    def append_round(self, row: dict[str, Any]) -> None:
+        run_id = str(row["run_id"])
+        round_num = int(row["round"])
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO round_logs (run_id, round, row_json, updated_at)
+                VALUES (%(run_id)s, %(round)s, %(row_json)s, now())
+                ON CONFLICT(run_id, round) DO UPDATE SET
+                    row_json=excluded.row_json,
+                    updated_at=now()
+                """,
+                {
+                    "run_id": run_id,
+                    "round": round_num,
+                    "row_json": self._jsonb(row),
+                },
+            )
+
+    def load_manifest(self, run_id: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT manifest_json FROM runs WHERE run_id = %s", (run_id,)
+            ).fetchone()
+        return row["manifest_json"] if row else None
+
+    def load_rounds(self, run_id: str) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT row_json FROM round_logs
+                WHERE run_id = %s
+                ORDER BY round ASC
+                """,
+                (run_id,),
+            ).fetchall()
+        return [row["row_json"] for row in rows]
+
+    def list_runs(self) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT run_id, manifest_json FROM runs
+                WHERE status IN ('running', 'succeeded')
+                ORDER BY start_time DESC NULLS LAST
+                """
+            ).fetchall()
+        return [
+            run_metadata_from_manifest(
+                {**row["manifest_json"], "run_id": row["manifest_json"].get("run_id", row["run_id"])},
+                make_db_run_ref(self.uri, str(row["run_id"])),
+            )
+            for row in rows
+        ]

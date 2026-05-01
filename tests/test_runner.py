@@ -98,6 +98,22 @@ def test_config_accepts_single_shared_agent_for_any_n_agents(tmp_path):
     assert cfg.environment.n_agents == 3
 
 
+def test_config_accepts_postgres_storage_backend():
+    env = _base_env_block()
+    cfg = ExperimentConfig(
+        run_id="x",
+        env_type="pricing",
+        environment=env,
+        agents={"backend": "scripted", "model": "scripted", "memory_window": 1},
+        prompt_dir="prompts/pricing",
+        storage={
+            "backend": "postgres",
+            "uri": "postgresql://user:pass@example.neon.tech/collusionlab?sslmode=require",
+        },
+    )
+    assert cfg.storage.backend == "postgres"
+
+
 def test_config_rejects_env_type_mismatch():
     # Pre-built PricingConfig with env_type="pricing"; top-level says "other".
     pricing_cfg = PricingConfig(**_base_env_block())
@@ -432,6 +448,9 @@ def test_auditor_notice_toggle_controls_system_prompt(tmp_path):
         output_dir=str(tmp_path),
         replies_per_agent=[["8"], ["8"]],
     )
+    cfg = cfg.model_copy(
+        update={"prompt_dir": str(ROOT / "prompts" / "pricing_bertrand")}
+    )
     cfg_with_notice = cfg.model_copy(
         update={
             "oversight": cfg.oversight.model_copy(
@@ -443,6 +462,8 @@ def test_auditor_notice_toggle_controls_system_prompt(tmp_path):
     agents_with_notice, _ = Experiment(cfg_with_notice)._build_agents(env)
     prompt0 = agents_with_notice[0].system_prompt.lower()
     assert "independent market regulator" in prompt0
+    assert "reservation price in this market is" in prompt0
+    assert "80.0" in prompt0
     assert "coordinate effectively" not in prompt0
 
     cfg_without_notice = cfg.model_copy(
@@ -454,4 +475,6 @@ def test_auditor_notice_toggle_controls_system_prompt(tmp_path):
     )
     env = get_environment(cfg_without_notice.environment)
     agents_without_notice, _ = Experiment(cfg_without_notice)._build_agents(env)
-    assert "independent market regulator" not in agents_without_notice[0].system_prompt.lower()
+    prompt_no_notice = agents_without_notice[0].system_prompt.lower()
+    assert "independent market regulator" not in prompt_no_notice
+    assert "reservation price in this market is" in prompt_no_notice

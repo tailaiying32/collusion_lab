@@ -88,7 +88,7 @@ class OversightConfig(BaseModel):
 class StorageConfig(BaseModel):
     """Optional external persistence sink for run artifacts."""
 
-    backend: Literal["local", "sqlite"] = "local"
+    backend: Literal["local", "sqlite", "postgres"] = "local"
     uri: str | None = None
 
     model_config = {"extra": "forbid"}

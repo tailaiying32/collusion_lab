@@ -31,3 +31,6 @@ oversight:
   llm_judge_model: gpt-4o-mini
   llm_judge_enforcement: judge_only
 output_dir: data/raw
+storage:
+  backend: postgres
+  uri: null

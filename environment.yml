@@ -16,3 +16,4 @@ dependencies:
   - pip:
       - openai
       - anthropic
+      - psycopg[binary]

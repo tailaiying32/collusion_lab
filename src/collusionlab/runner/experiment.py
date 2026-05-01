@@ -31,7 +31,13 @@ from collusionlab.environments.communication import (
     get_comm_handler,
 )
 from collusionlab.runner.config import AgentConfig, ExperimentConfig
-from collusionlab.storage import SQLiteRunStore, configured_storage_uri, is_sqlite_uri
+from collusionlab.storage import (
+    configured_storage_uri,
+    get_run_store,
+    is_database_uri,
+    is_postgres_uri,
+    is_sqlite_uri,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -61,12 +67,16 @@ class Experiment:
         run_dir.mkdir(parents=True, exist_ok=True)
         log_path = run_dir / "log.jsonl"
         manifest_path = run_dir / "manifest.json"
-        storage_uri = configured_storage_uri(cfg.storage.uri)
+        storage_uri = (
+            configured_storage_uri(cfg.storage.uri)
+            if cfg.storage.backend != "local" or cfg.storage.uri
+            else None
+        )
         run_store = None
-        if cfg.storage.backend == "sqlite" or is_sqlite_uri(storage_uri):
+        if cfg.storage.backend != "local" or is_database_uri(storage_uri):
             if not storage_uri:
-                raise ValueError("storage.backend='sqlite' requires storage.uri")
-            run_store = SQLiteRunStore(storage_uri)
+                raise ValueError("database storage requires storage.uri")
+            run_store = get_run_store(storage_uri)
 
         env = get_environment(cfg.environment)
         agents, model_clients = self._build_agents(env)
@@ -480,7 +490,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--config", required=True, help="Path to ExperimentConfig YAML.")
     parser.add_argument("--output-dir", help="Override output_dir from the config.")
     parser.add_argument("--run-id", help="Override run_id from the config.")
-    parser.add_argument("--storage-uri", help="SQLite storage URI/path for external run persistence.")
+    parser.add_argument("--storage-uri", help="SQLite/Postgres storage URI for external run persistence.")
     parser.add_argument(
         "--log-level", default="INFO", help="Python logging level (default INFO)."
     )
@@ -498,8 +508,11 @@ def main(argv: list[str] | None = None) -> None:
     if overrides:
         cfg = cfg.model_copy(update=overrides)
     if args.storage_uri:
+        backend = "postgres" if is_postgres_uri(args.storage_uri) else "sqlite"
+        if not is_sqlite_uri(args.storage_uri) and not is_postgres_uri(args.storage_uri):
+            raise ValueError("--storage-uri must be a sqlite, postgresql, or postgres URI/path")
         cfg = cfg.model_copy(
-            update={"storage": cfg.storage.model_copy(update={"backend": "sqlite", "uri": args.storage_uri})}
+            update={"storage": cfg.storage.model_copy(update={"backend": backend, "uri": args.storage_uri})}
         )
 
     manifest_path = Experiment(cfg).run()

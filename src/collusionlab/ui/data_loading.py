@@ -14,9 +14,8 @@ from typing import Any
 import pandas as pd
 
 from collusionlab.storage import (
-    SQLiteRunStore,
-    configured_storage_uri,
-    is_sqlite_uri,
+    get_run_store,
+    is_database_uri,
     parse_db_run_ref,
 )
 
@@ -46,9 +45,9 @@ def list_runs(raw_dir: Path | str) -> list[dict]:
         - comm_mode: str
         - oversight_mode: str
     """
-    storage_uri = configured_storage_uri(str(raw_dir) if is_sqlite_uri(str(raw_dir)) else None)
-    if is_sqlite_uri(storage_uri):
-        return SQLiteRunStore(str(storage_uri)).list_runs()
+    raw_ref = str(raw_dir)
+    if is_database_uri(raw_ref):
+        return get_run_store(raw_ref).list_runs()
 
     raw_dir = Path(raw_dir)
     runs: list[dict] = []
@@ -314,7 +313,7 @@ def load_manifest(run_dir: Path | str) -> dict | None:
     db_ref = parse_db_run_ref(run_dir)
     if db_ref is not None:
         uri, run_id = db_ref
-        return SQLiteRunStore(uri).load_manifest(run_id)
+        return get_run_store(uri).load_manifest(run_id)
 
     run_dir = Path(run_dir)
     manifest_path = run_dir / "manifest.json"
@@ -346,7 +345,7 @@ def load_log_rows(run_dir: Path | str) -> list[dict]:
     db_ref = parse_db_run_ref(run_dir)
     if db_ref is not None:
         uri, run_id = db_ref
-        return SQLiteRunStore(uri).load_rounds(run_id)
+        return get_run_store(uri).load_rounds(run_id)
 
     run_dir = Path(run_dir)
     log_path = run_dir / "log.jsonl"

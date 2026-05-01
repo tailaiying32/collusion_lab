@@ -166,6 +166,7 @@ class PricingGame(GameEnvironment):
             "price_min": self.config.price_min,
             "price_max": self.config.price_max,
             "cost": self.demand.marginal_cost,
+            "reservation_price": self.demand.monopoly_price(),
         }
 
     def compute_extra_signals(
