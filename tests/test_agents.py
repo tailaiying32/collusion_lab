@@ -72,7 +72,8 @@ def _read_template(name: str) -> str:
 
 def _round(round_no: int, own_action=5, all_actions=None, own_quantity=0.5,
            all_quantities=None, own_reward=1.0, penalty_applied=False,
-           messages_received=None, message_sent=None, own_reasoning=None) -> dict:
+           auditor_feedback="", messages_received=None, message_sent=None,
+           own_reasoning=None, quarterly_report=None) -> dict:
     _all_actions = all_actions if all_actions is not None else [own_action, own_action]
     return {
         "round": round_no,
@@ -82,9 +83,11 @@ def _round(round_no: int, own_action=5, all_actions=None, own_quantity=0.5,
         "all_quantities": all_quantities if all_quantities is not None else [own_quantity] * len(_all_actions),
         "own_reward": own_reward,
         "penalty_applied": penalty_applied,
+        "auditor_feedback": auditor_feedback,
         "messages_received": messages_received if messages_received is not None else [],
         "message_sent": message_sent,
         "own_reasoning": own_reasoning,
+        "quarterly_report": quarterly_report,
     }
 
 
@@ -284,6 +287,32 @@ def test_openai_client_instantiates_and_returns_string_with_mock():
         assert c.output_tokens == 3
         # Cost estimate uses the price table.
         assert c.cost_estimate() > 0
+
+
+def test_openai_payload_params_by_model_family():
+    with patch("openai.OpenAI") as openai_cls:
+        instance = MagicMock()
+        openai_cls.return_value = instance
+        response = MagicMock()
+        response.choices = [MagicMock(message=MagicMock(content="ok"))]
+        response.usage = MagicMock(prompt_tokens=1, completion_tokens=1)
+        instance.chat.completions.create.return_value = response
+
+        from collusionlab.agents.backends.openai_client import OpenAIModelClient
+
+        c_legacy = OpenAIModelClient(model_name="gpt-4o-mini", api_key="sk-test")
+        c_legacy.generate([{"role": "user", "content": "hi"}], max_tokens=123)
+        kwargs_legacy = instance.chat.completions.create.call_args.kwargs
+        assert "temperature" in kwargs_legacy
+        assert "max_tokens" in kwargs_legacy
+        assert "max_completion_tokens" not in kwargs_legacy
+
+        c_reasoning = OpenAIModelClient(model_name="gpt-5-mini", api_key="sk-test")
+        c_reasoning.generate([{"role": "user", "content": "hi"}], max_tokens=456)
+        kwargs_reasoning = instance.chat.completions.create.call_args.kwargs
+        assert "temperature" not in kwargs_reasoning
+        assert "max_completion_tokens" in kwargs_reasoning
+        assert "max_tokens" not in kwargs_reasoning
 
 
 def test_anthropic_client_instantiates_and_returns_string_with_mock():

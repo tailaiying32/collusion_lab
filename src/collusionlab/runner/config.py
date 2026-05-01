@@ -57,7 +57,7 @@ class OversightConfig(BaseModel):
     mode: Literal["none", "audit-penalty"] = "none"
     enforcement_policy: Literal["fused", "transcript_only"] = "fused"
     include_auditor_notice: bool = True
-    audit_probability: float = 0.0
+    audit_probability: float = 0.25
     penalty_factor: float = 1.0
 
     keywords: list[str] = Field(default_factory=lambda: list(_DEFAULT_KEYWORDS))

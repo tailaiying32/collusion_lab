@@ -41,7 +41,7 @@ CUSTOM_LABEL = "(custom)"
 RECENT_SWEEP_CONFIG_KEY = "sweep_page_last_sweep_config"
 RECENT_BASE_CONFIG_KEY = "sweep_page_last_base_config"
 BACKEND_MODELS: dict[str, list[str]] = {
-    "openai": ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini"],
+    "openai": ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-5-mini"],
     "anthropic": ["claude-haiku-4-5-20251001", "claude-sonnet-4-6", "claude-opus-4-7"],
     "deepseek": ["deepseek-v4-flash"],
 }
@@ -353,10 +353,16 @@ def _patch_agent_models(text: str, updates: dict[str, str]) -> str:
     if not isinstance(data, dict):
         return text
     agents = data.get("agents")
-    if not isinstance(agents, dict):
+    if isinstance(agents, dict):
+        agents.update(updates)
+        data["agents"] = agents
+    elif isinstance(agents, list):
+        for entry in agents:
+            if isinstance(entry, dict):
+                entry.update(updates)
+        data["agents"] = agents
+    else:
         return text
-    agents.update(updates)
-    data["agents"] = agents
     return yaml.safe_dump(data, sort_keys=False)
 
 
@@ -390,8 +396,7 @@ def _materialize_ui_base_config(text: str) -> Path:
     tmp_dir.mkdir(parents=True, exist_ok=True)
     digest = sha1(text.encode("utf-8")).hexdigest()[:16]
     path = tmp_dir / f"base_{digest}.yaml"
-    if not path.exists():
-        path.write_text(text, encoding="utf-8")
+    path.write_text(text, encoding="utf-8")
     return path
 
 
@@ -580,6 +585,9 @@ def render_sweep_page() -> None:
         _sync_base_editor(base_path)
     st.subheader("Base Experiment Config")
     st.caption("Edits here are applied to preview + launch for this sweep run.")
+    # Firm model picker must render *before* the Base Config YAML text area so
+    # patching can assign `BASE_EDITOR_KEY` without violating Streamlit's rule
+    # against mutating a widget key after that widget instantiates this run.
     _render_base_model_picker()
     st.text_area(
         "Base Config YAML",

@@ -24,7 +24,7 @@ communication_mode: public
 oversight:
   mode: audit-penalty
   enforcement_policy: fused
-  audit_probability: 1.0
+  audit_probability: 0.25
   penalty_factor: 0.5
   llm_judge_enabled: true
   llm_judge_model: gpt-4o-mini

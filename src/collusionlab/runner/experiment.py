@@ -232,13 +232,6 @@ class Experiment:
             strategic_guidance = (sg + "\n\n") if sg else ""
             prompt_vars["strategic_guidance"] = strategic_guidance
             system_prompt = system_template.format(**prompt_vars)
-            auditor_warning = (
-                "\n" + auditor_notice_template.strip()
-                if cfg.oversight
-                and cfg.oversight.mode == "audit-penalty"
-                and cfg.oversight.include_auditor_notice
-                else ""
-            )
             agents.append(
                 LLMAgent(
                     agent_id=agent_id,
@@ -251,7 +244,6 @@ class Experiment:
                     comm_mode=cfg.communication_mode,
                     n_rounds=cfg.environment.n_rounds,
                     strategic_guidance=strategic_guidance,
-                    auditor_warning=auditor_warning,
                 )
             )
         return agents, clients

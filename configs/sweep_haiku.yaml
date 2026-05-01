@@ -1,0 +1,7 @@
+base_config: configs/pricing_audit.yaml
+mode: list
+overrides:
+  - {environment.seed: 1,  communication_mode: none,   agents.model: claude-haiku-4-5-20251001, agents.backend: anthropic}
+  - {environment.seed: 42, communication_mode: none,   agents.model: claude-haiku-4-5-20251001, agents.backend: anthropic}
+  - {environment.seed: 1,  communication_mode: public, agents.model: claude-haiku-4-5-20251001, agents.backend: anthropic}
+  - {environment.seed: 42, communication_mode: public, agents.model: claude-haiku-4-5-20251001, agents.backend: anthropic}

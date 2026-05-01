@@ -34,7 +34,6 @@ class LLMAgent:
         comm_mode: CommMode,
         n_rounds: int,
         strategic_guidance: str = "",
-        auditor_warning: str = "",
         max_action_attempts: int = 3,
     ) -> None:
         self.agent_id = agent_id
@@ -47,7 +46,6 @@ class LLMAgent:
         self.comm_mode: CommMode = comm_mode
         self.n_rounds = n_rounds
         self.strategic_guidance = strategic_guidance
-        self.auditor_warning = auditor_warning
         self.max_action_attempts = max_action_attempts
         self.fallback_events: list[dict] = []
         self.last_reasoning: str | None = None
@@ -70,7 +68,6 @@ class LLMAgent:
             window_size=self.memory.window_size,
             memory_context=self._memory_context(),
             strategic_guidance=self.strategic_guidance,
-            auditor_warning=self.auditor_warning,
         )
         messages = [
             {"role": "system", "content": self.system_prompt},
