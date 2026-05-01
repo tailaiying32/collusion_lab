@@ -16,7 +16,7 @@ from collusionlab.environments.pricing import PricingConfig, PricingGame  # noqa
 import collusionlab.agents.backends.scripted_client  # noqa: F401  (registers "scripted")
 from collusionlab.agents.model_client import ModelClient, register_backend
 from collusionlab.environments.base import get_environment
-from collusionlab.runner.config import ExperimentConfig
+from collusionlab.runner.config import ExperimentConfig, StorageConfig
 from collusionlab.runner.experiment import Experiment
 
 
@@ -263,6 +263,31 @@ def test_experiment_output_layout(tmp_path):
     assert (run_dir / "manifest.json").exists()
 
 
+def test_experiment_persists_to_sqlite_storage(tmp_path):
+    n_rounds = 2
+    db_path = tmp_path / "runs.sqlite"
+    cfg = _make_config(
+        n_rounds=n_rounds,
+        run_id="sqlite-run",
+        output_dir=str(tmp_path / "files"),
+        replies_per_agent=[["8"] * n_rounds, ["8"] * n_rounds],
+    )
+    cfg = cfg.model_copy(
+        update={"storage": StorageConfig(backend="sqlite", uri=str(db_path))}
+    )
+
+    Experiment(cfg).run()
+
+    from collusionlab.storage import SQLiteRunStore
+
+    store = SQLiteRunStore(str(db_path))
+    manifest = store.load_manifest("sqlite-run")
+    rows = store.load_rounds("sqlite-run")
+    assert manifest is not None
+    assert manifest["run_id"] == "sqlite-run"
+    assert [r["round"] for r in rows] == [1, 2]
+
+
 def test_experiment_progress_callback_invoked(tmp_path):
     n_rounds = 4
     cfg = _make_config(
@@ -282,10 +307,11 @@ def test_experiment_progress_callback_invoked(tmp_path):
 def test_experiment_reward_elevation_is_zero_at_nash(tmp_path):
     # Both agents priced at Nash (=34 in Bertrand calibrated config) → elevation should be 0.
     n_rounds = 2
+    nash = PricingConfig(**_base_env_block()).nash_price
     cfg = _make_config(
         n_rounds=n_rounds,
         output_dir=str(tmp_path),
-        replies_per_agent=[["34"] * n_rounds, ["34"] * n_rounds],
+        replies_per_agent=[[str(nash)] * n_rounds, [str(nash)] * n_rounds],
     )
     Experiment(cfg).run()
     log_path = tmp_path / "test-run" / "log.jsonl"

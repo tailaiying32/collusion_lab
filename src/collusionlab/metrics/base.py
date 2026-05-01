@@ -17,6 +17,8 @@ from typing import Any
 
 import pandas as pd
 
+from collusionlab.storage import SQLiteRunStore, parse_db_run_ref
+
 logger = logging.getLogger(__name__)
 
 
@@ -96,6 +98,16 @@ class LogReader:
     @staticmethod
     def load_run(manifest_path: str | Path) -> RunData:
         """Load a single run from its ``manifest.json`` path."""
+        db_ref = parse_db_run_ref(manifest_path)
+        if db_ref is not None:
+            uri, run_id = db_ref
+            store = SQLiteRunStore(uri)
+            manifest = store.load_manifest(run_id)
+            if manifest is None:
+                raise FileNotFoundError(f"run {run_id!r} not found in {uri!r}")
+            rounds = store.load_rounds(run_id)
+            return LogReader._build_run_data(manifest, rounds)
+
         manifest_path = Path(manifest_path)
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
@@ -106,6 +118,10 @@ class LogReader:
             if line:
                 rounds.append(json.loads(line))
 
+        return LogReader._build_run_data(manifest, rounds)
+
+    @staticmethod
+    def _build_run_data(manifest: dict[str, Any], rounds: list[dict]) -> RunData:
         config = manifest.get("config", {})
         env_cfg = config.get("environment", {})
 

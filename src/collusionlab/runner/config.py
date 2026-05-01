@@ -85,6 +85,15 @@ class OversightConfig(BaseModel):
     model_config = {"extra": "forbid"}
 
 
+class StorageConfig(BaseModel):
+    """Optional external persistence sink for run artifacts."""
+
+    backend: Literal["local", "sqlite"] = "local"
+    uri: str | None = None
+
+    model_config = {"extra": "forbid"}
+
+
 class ExperimentConfig(BaseModel):
     run_id: str | None = None
     env_type: str
@@ -100,6 +109,7 @@ class ExperimentConfig(BaseModel):
     communication_mode: Literal["none", "public", "private"] = "none"
     oversight: OversightConfig = Field(default_factory=OversightConfig)
     output_dir: str = "data/raw"
+    storage: StorageConfig = Field(default_factory=StorageConfig)
 
     model_config = {"extra": "forbid", "arbitrary_types_allowed": True}
 

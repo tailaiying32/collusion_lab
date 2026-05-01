@@ -37,6 +37,7 @@ from collusionlab.ui.run_page import render_run_page
 from collusionlab.ui.sweep_page import render_sweep_page
 from collusionlab.metrics.base import LogReader, get_metrics_computer
 from collusionlab.metrics import collusion, concealment
+from collusionlab.storage import is_sqlite_uri
 import collusionlab.environments.pricing.metrics  # noqa: F401
 
 # ---------------------------------------------------------------------------
@@ -85,10 +86,11 @@ def page_sweep():
 # ---------------------------------------------------------------------------
 
 
-def _safe_run_metrics(run_dir: Path) -> tuple[dict, object | None]:
+def _safe_run_metrics(run_dir: Path | str) -> tuple[dict, object | None]:
     """Load RunData + computed metrics for a run directory."""
     try:
-        run_data = LogReader.load_run(run_dir / "manifest.json")
+        manifest_ref = run_dir / "manifest.json" if isinstance(run_dir, Path) else run_dir
+        run_data = LogReader.load_run(manifest_ref)
         computer = get_metrics_computer(run_data.env_type)
         return computer.compute(run_data), run_data
     except Exception:
@@ -128,30 +130,110 @@ def _run_id_preview(run_id: str | None, n: int = 8) -> str:
     return f"{rid[:n]}..." if rid else "unknown"
 
 
-def _config_preview(config: dict) -> str:
-    env = config.get("environment", {}) or {}
-    agents = config.get("agents", {}) or {}
-    oversight = config.get("oversight", {}) or {}
-    comm = config.get("communication_mode", "unknown")
-    oversight_mode = oversight.get("mode", "unknown")
+def _coerce_agents_config(agents_cfg_raw) -> dict:
+    if isinstance(agents_cfg_raw, dict):
+        return agents_cfg_raw
+    if isinstance(agents_cfg_raw, list) and agents_cfg_raw and isinstance(agents_cfg_raw[0], dict):
+        return agents_cfg_raw[0]
+    return {}
+
+
+def _run_selector_label_from_fields(
+    run_id: str | None,
+    model: str | None,
+    n_rounds,
+    n_agents,
+    communication_mode: str | None,
+    oversight_mode: str | None,
+    audit_probability=None,
+) -> str:
+    """Run label for Analyze/Compare selectors with selective keys."""
+    is_audit = str(oversight_mode or "unknown") == "audit-penalty"
+    p_val = "?"
+    if audit_probability is not None:
+        p_val = f"{float(audit_probability):.2f}"
     chunks = [
-        f"model={agents.get('model', 'unknown')}",
-        f"rounds={env.get('n_rounds', '?')}",
-        f"agents={env.get('n_agents', '?')}",
-        f"comm={comm}",
-        f"oversight={oversight_mode}",
+        _run_id_preview(run_id),
+        str(model or "unknown"),
+        f"n={n_rounds if n_rounds is not None else '?'}",
+        f"agents={n_agents if n_agents is not None else '?'}",
+        f"comm={communication_mode or 'unknown'}",
+        str(oversight_mode or "unknown"),
+        f"audit (p={p_val})={'true' if is_audit else 'false'}",
     ]
-    if oversight_mode == "audit-penalty":
-        p_audit = oversight.get("audit_probability")
-        if p_audit is not None:
-            chunks.append(f"p_audit={float(p_audit):.2f}")
-        if oversight.get("llm_judge_enabled"):
-            chunks.append(f"auditor={oversight.get('llm_judge_model', 'unknown')}")
     return " | ".join(chunks)
 
 
-def _run_preview_label(run) -> str:
-    return f"run_id={_run_id_preview(run.run_id)} | {_config_preview(run.config)}"
+def _detailed_run_selector_label(run_id: str | None, manifest: dict | None = None) -> str:
+    """Build a run selector label aligned with Analyze tab details."""
+    manifest = manifest or {}
+    config = manifest.get("config", {}) or {}
+    env_cfg = config.get("environment", {}) or {}
+    agents_cfg = _coerce_agents_config(config.get("agents", {}) or {})
+    oversight_cfg = config.get("oversight", {}) or {}
+    return _run_selector_label_from_fields(
+        run_id=run_id,
+        model=agents_cfg.get("model"),
+        n_rounds=env_cfg.get("n_rounds"),
+        n_agents=env_cfg.get("n_agents"),
+        communication_mode=config.get("communication_mode"),
+        oversight_mode=oversight_cfg.get("mode"),
+        audit_probability=oversight_cfg.get("audit_probability"),
+    )
+
+
+def _compact_value_list(values: list) -> str:
+    uniq = sorted({str(v) for v in values if v is not None and str(v) != ""})
+    if not uniq:
+        return "?"
+    if len(uniq) == 1:
+        return uniq[0]
+    return "[" + ", ".join(uniq) + "]"
+
+
+def _detailed_sweep_selector_label(sweep: dict) -> str:
+    """Build a rich label for the Compare sweep selector."""
+    sweep_id = str(sweep.get("sweep_id", "unknown"))
+    sweep_manifest = load_sweep_manifest(sweep.get("path", ""))
+    runs_meta = (sweep_manifest or {}).get("runs", []) or []
+    models: list[str] = []
+    rounds: list = []
+    agents: list = []
+    comms: list[str] = []
+    oversights: list[str] = []
+    audits: list[str] = []
+    for run_meta in runs_meta:
+        cfg = (
+            run_meta.get("config_snapshot")
+            or run_meta.get("config")
+            or {}
+        )
+        if not isinstance(cfg, dict):
+            continue
+        env_cfg = cfg.get("environment", {}) or {}
+        agents_cfg = _coerce_agents_config(cfg.get("agents", {}) or {})
+        oversight_cfg = cfg.get("oversight", {}) or {}
+        models.append(agents_cfg.get("model", "unknown"))
+        rounds.append(env_cfg.get("n_rounds"))
+        agents.append(env_cfg.get("n_agents"))
+        comms.append(cfg.get("communication_mode", "unknown"))
+        oversights.append(oversight_cfg.get("mode", "unknown"))
+        is_audit = oversight_cfg.get("mode") == "audit-penalty"
+        p_val = oversight_cfg.get("audit_probability")
+        p_str = f"{float(p_val):.2f}" if p_val is not None else "?"
+        audits.append(f"(p={p_str})={'true' if is_audit else 'false'}")
+    n_runs = sweep.get("n_runs", "?")
+    chunks = [
+        f"{sweep_id[:8]}...",
+        _compact_value_list(models),
+        f"n={_compact_value_list(rounds)}",
+        f"agents={_compact_value_list(agents)}",
+        f"comm={_compact_value_list(comms)}",
+        _compact_value_list(oversights),
+        f"audit {_compact_value_list(audits)}",
+    ]
+    chunks.append(str(n_runs))
+    return " | ".join(chunks)
 
 
 def _plotly_image_bytes(fig: go.Figure, fmt: str) -> bytes | None:
@@ -173,10 +255,7 @@ def page_compare():
         st.info("No sweep manifests found under `data/raw/sweep_*/`.")
         return
 
-    options = {
-        f"{s['sweep_id'][:8]}... | {s['started_at'][:19]} | {s['mode']} | runs={s['n_runs']}": s["path"]
-        for s in sweeps
-    }
+    options = {_detailed_sweep_selector_label(s): s["path"] for s in sweeps}
     selected_sweep_path = st.session_state.pop("_selected_sweep_path", None)
     option_labels = list(options.keys())
     sweep_index = 0
@@ -232,7 +311,9 @@ def render_side_by_side(runs, run_paths: dict) -> None:
 
     run_labels: dict[str, str] = {}
     for r in runs:
-        label = f"{_run_preview_label(r)} ({str(r.run_id)[-4:]})"
+        run_dir = run_paths.get(r.run_id)
+        manifest = load_manifest(run_dir) if run_dir else None
+        label = _detailed_run_selector_label(r.run_id, manifest)
         run_labels[label] = r.run_id
 
     selected_labels = st.multiselect(
@@ -632,11 +713,7 @@ def render_run_browser(sweep_df: pd.DataFrame, run_paths: dict[str, Path] | None
             if not run_dir:
                 continue
             manifest = load_manifest(run_dir)
-            cfg = manifest.get("config", {}) if manifest else {}
-            label = (
-                f"run_id={_run_id_preview(run_id)} ({str(run_id)[-4:]}) | "
-                f"{_config_preview(cfg)}"
-            )
+            label = _detailed_run_selector_label(run_id, manifest)
             open_options.append((label, run_id))
         if not open_options:
             st.caption("Run jump is unavailable because run manifests could not be loaded.")
@@ -659,8 +736,9 @@ def render_run_browser(sweep_df: pd.DataFrame, run_paths: dict[str, Path] | None
 def page_analyze():
     st.header("Analyze Run")
 
-    raw_dir = Path("data/raw")
-    if not raw_dir.exists():
+    import os
+    raw_dir = os.getenv("COLLUSIONLAB_STORAGE_URL") or "data/raw"
+    if not is_sqlite_uri(str(raw_dir)) and not Path(raw_dir).exists():
         st.warning("No runs found. `data/raw/` does not exist.")
         return
 
@@ -703,21 +781,36 @@ def page_analyze():
         st.info("No runs match the current filters. Clear one or more filters to continue.")
         return
 
+    display_labels = []
+    for _, row in filtered.iterrows():
+        display_labels.append(
+            _run_selector_label_from_fields(
+                run_id=row.get("run_id"),
+                model=row.get("firm_model"),
+                n_rounds=row.get("n_rounds"),
+                n_agents=row.get("n_agents"),
+                communication_mode=row.get("comm_mode"),
+                oversight_mode=row.get("oversight_mode"),
+                audit_probability=row.get("audit_probability"),
+            )
+        )
+
     preselected = st.session_state.pop("_selected_run_id", None)
-    labels = list(filtered["label"])
     default_index = 0
     if preselected:
-        matches = filtered.index[filtered["run_id"] == preselected].tolist()
-        if matches:
-            default_index = list(filtered.index).index(matches[0])
+        for i, (_, row) in enumerate(filtered.iterrows()):
+            if row.get("run_id") == preselected:
+                default_index = i
+                break
 
-    selected_label = st.selectbox(
+    selected_index = st.selectbox(
         "Select run",
-        options=labels,
+        options=list(range(len(display_labels))),
         index=default_index,
+        format_func=lambda i: display_labels[i],
     )
-    selected_row = filtered[filtered["label"] == selected_label].iloc[0]
-    run_dir = Path(selected_row["run_dir"])
+    selected_row = filtered.iloc[selected_index]
+    run_dir = selected_row["run_dir"]
 
     manifest = load_manifest(run_dir)
     rows = load_log_rows(run_dir)
@@ -750,7 +843,7 @@ def page_analyze():
 # ---------------------------------------------------------------------------
 
 
-def render_config_tab(manifest: dict, run_index: pd.DataFrame | None = None, current_run_dir: Path | None = None):
+def render_config_tab(manifest: dict, run_index: pd.DataFrame | None = None, current_run_dir: Path | str | None = None):
     st.subheader("Run Metadata")
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Elapsed (s)", f"{manifest.get('elapsed_seconds', 0):.1f}")
@@ -765,9 +858,9 @@ def render_config_tab(manifest: dict, run_index: pd.DataFrame | None = None, cur
     if run_index is not None and len(run_index) > 1:
         with st.expander("Compare config against another run"):
             options = {
-                row["label"]: Path(row["run_dir"])
+                row["label"]: row["run_dir"]
                 for _, row in run_index.iterrows()
-                if current_run_dir is None or Path(row["run_dir"]) != current_run_dir
+                if current_run_dir is None or str(row["run_dir"]) != str(current_run_dir)
             }
             if options:
                 label = st.selectbox("Diff target", options=list(options.keys()))

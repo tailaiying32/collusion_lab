@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from math import ceil, floor
 from typing import Literal
 
 from pydantic import Field, model_validator
@@ -74,7 +75,17 @@ class PricingConfig(EnvironmentConfig):
         try:
             from collusionlab.environments.pricing.demand import get_demand_model
             dm = get_demand_model(self.demand_model, self.n_agents, self.demand_params)
-            self.nash_price = max(self.price_min, min(self.price_max, round(dm.nash_price())))
-            self.monopoly_price = max(self.price_min, min(self.price_max, round(dm.monopoly_price())))
+            if self.demand_model == "bertrand":
+                # Discrete-grid projection for winner-take-all Bertrand:
+                # - Nash: lowest grid price at/above marginal cost.
+                # - Monopoly: must not exceed reservation price (else demand=0).
+                nash_p = int(ceil(dm.nash_price()))
+                mono_p = int(floor(dm.monopoly_price()))
+            else:
+                nash_p = int(round(dm.nash_price()))
+                mono_p = int(round(dm.monopoly_price()))
+
+            self.nash_price = max(self.price_min, min(self.price_max, nash_p))
+            self.monopoly_price = max(self.price_min, min(self.price_max, mono_p))
         except Exception:
             pass

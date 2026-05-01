@@ -31,6 +31,7 @@ from collusionlab.environments.communication import (
     get_comm_handler,
 )
 from collusionlab.runner.config import AgentConfig, ExperimentConfig
+from collusionlab.storage import SQLiteRunStore, configured_storage_uri, is_sqlite_uri
 
 
 logger = logging.getLogger(__name__)
@@ -60,6 +61,12 @@ class Experiment:
         run_dir.mkdir(parents=True, exist_ok=True)
         log_path = run_dir / "log.jsonl"
         manifest_path = run_dir / "manifest.json"
+        storage_uri = configured_storage_uri(cfg.storage.uri)
+        run_store = None
+        if cfg.storage.backend == "sqlite" or is_sqlite_uri(storage_uri):
+            if not storage_uri:
+                raise ValueError("storage.backend='sqlite' requires storage.uri")
+            run_store = SQLiteRunStore(storage_uri)
 
         env = get_environment(cfg.environment)
         agents, model_clients = self._build_agents(env)
@@ -99,6 +106,24 @@ class Experiment:
 
         start_time = datetime.now(timezone.utc)
         start_perf = time.perf_counter()
+        if run_store is not None:
+            run_store.save_manifest(
+                {
+                    "run_id": cfg.run_id,
+                    "env_type": cfg.env_type,
+                    "config": cfg.to_yaml_dict(),
+                    "log_path": str(log_path),
+                    "start_time": start_time.isoformat(),
+                    "end_time": None,
+                    "elapsed_seconds": None,
+                    "agents": [],
+                    "total_input_tokens": 0,
+                    "total_output_tokens": 0,
+                    "total_cost_estimate_usd": 0.0,
+                    "total_fallback_events": 0,
+                },
+                status="running",
+            )
 
         with log_path.open("w", encoding="utf-8") as log_f:
             for round_idx in range(1, n_rounds + 1):
@@ -203,6 +228,8 @@ class Experiment:
                     "reasoning": list(reasoning),
                 }
                 log_f.write(json.dumps(line, sort_keys=True) + "\n")
+                if run_store is not None:
+                    run_store.append_round(line)
                 history.append(line)
                 if self.progress_callback is not None:
                     self.progress_callback(round_idx, n_rounds, line)
@@ -223,6 +250,8 @@ class Experiment:
             elapsed_s=elapsed,
         )
         manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+        if run_store is not None:
+            run_store.save_manifest(manifest, status="succeeded")
         return manifest_path
 
     # ------------------------------------------------------------------
@@ -451,6 +480,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--config", required=True, help="Path to ExperimentConfig YAML.")
     parser.add_argument("--output-dir", help="Override output_dir from the config.")
     parser.add_argument("--run-id", help="Override run_id from the config.")
+    parser.add_argument("--storage-uri", help="SQLite storage URI/path for external run persistence.")
     parser.add_argument(
         "--log-level", default="INFO", help="Python logging level (default INFO)."
     )
@@ -467,6 +497,10 @@ def main(argv: list[str] | None = None) -> None:
         overrides["run_id"] = args.run_id
     if overrides:
         cfg = cfg.model_copy(update=overrides)
+    if args.storage_uri:
+        cfg = cfg.model_copy(
+            update={"storage": cfg.storage.model_copy(update={"backend": "sqlite", "uri": args.storage_uri})}
+        )
 
     manifest_path = Experiment(cfg).run()
     print(str(manifest_path))

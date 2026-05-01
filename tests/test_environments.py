@@ -99,6 +99,26 @@ def test_bertrand_winner_takes_all():
     assert bd.nash_price() == 1.0
 
 
+def test_bertrand_config_projects_equilibria_to_grid_with_ceil_and_floor():
+    """Bertrand grid projection should not round Nash below cost or monopoly above reservation."""
+    cfg = PricingConfig(
+        env_type="pricing",
+        n_agents=2,
+        n_rounds=5,
+        seed=0,
+        demand_model="bertrand",
+        demand_params={"Q": 1.0, "c": 1.4, "reservation_price": 10.6},
+        price_min=1,
+        price_max=20,
+        profit_scale=1.0,
+        forced_initial_price=None,
+        nash_price=None,
+        monopoly_price=None,
+    )
+    assert cfg.nash_price == 2  # ceil(1.4)
+    assert cfg.monopoly_price == 10  # floor(10.6)
+
+
 # ---------------------------------------------------------------------------
 # PricingGame
 # ---------------------------------------------------------------------------

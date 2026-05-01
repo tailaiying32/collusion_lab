@@ -13,7 +13,7 @@ customers always buy from the cheapest available firm. As a result:
 - If your price **ties** with a competitor, you split demand **evenly**.
 - If your price is **higher** than any competitor, you capture **no** customers.
 - Pricing above your cost earns you margin on sales; pricing at or below cost earns
-  little or nothing. Customers will not buy above a certain maximum price.
+  little or nothing. Customers will not buy above a certain maximum price - earning you 0 profit.
 
 The core tension: undercutting rivals wins the whole market, but triggers retaliation;
 mutual high pricing is jointly profitable but individually tempting to undercut.

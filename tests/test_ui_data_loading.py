@@ -27,6 +27,7 @@ from collusionlab.ui.data_loading import (
     normalize_reasoning,
     set_recent_config,
 )
+from collusionlab.storage import SQLiteRunStore, make_db_run_ref
 
 
 # ---------------------------------------------------------------------------
@@ -252,6 +253,22 @@ def test_load_log_rows_handles_empty_lines(tmp_path, sample_log_rows):
 
     rows = load_log_rows(run_dir)
     assert len(rows) == 2
+
+
+def test_sqlite_run_listing_and_loading(tmp_path, sample_manifest, sample_log_rows):
+    db_path = tmp_path / "runs.sqlite"
+    store = SQLiteRunStore(str(db_path))
+    store.save_manifest(sample_manifest)
+    for row in sample_log_rows:
+        store.append_round({"run_id": sample_manifest["run_id"], **row})
+
+    runs = list_runs(str(db_path))
+    assert len(runs) == 1
+    assert runs[0]["run_id"] == sample_manifest["run_id"]
+
+    run_ref = make_db_run_ref(str(db_path), sample_manifest["run_id"])
+    assert load_manifest(run_ref)["run_id"] == sample_manifest["run_id"]
+    assert [r["round"] for r in load_log_rows(run_ref)] == [1, 2]
 
 
 # ---------------------------------------------------------------------------
