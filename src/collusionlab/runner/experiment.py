@@ -113,6 +113,22 @@ class Experiment:
                 auditor_feedback = self._build_auditor_feedback(audit_event)
 
                 # (e) Update each agent's memory with post-penalty rewards.
+                cumulative_rewards = [
+                    cumulative_rewards[i] + rewards[i] for i in range(env.n_agents)
+                ]
+
+                quarterly_report: str | None = None
+                if round_idx % 10 == 0:
+                    parts = []
+                    for i, cum in enumerate(cumulative_rewards):
+                        parts.append(f"  Agent {i}: {cum:.4f}")
+                    quarterly_report = (
+                        f"--- Periodic Summary (rounds 1–{round_idx}) ---\n"
+                        + "Cumulative rewards:\n"
+                        + "\n".join(parts)
+                        + "\n" + "-" * 48
+                    )
+
                 for agent in agents:
                     sent = self._message_from(agent.agent_id, raw_messages)
                     agent.memory.update({
@@ -127,11 +143,8 @@ class Experiment:
                         "messages_received": delivered_by_agent[agent.agent_id],
                         "message_sent": sent,
                         "own_reasoning": agent.last_reasoning,
+                        "quarterly_report": quarterly_report,
                     })
-
-                cumulative_rewards = [
-                    cumulative_rewards[i] + rewards[i] for i in range(env.n_agents)
-                ]
 
                 # (f) Trajectory signals.
                 signals = self._compute_signals(
@@ -219,6 +232,13 @@ class Experiment:
             strategic_guidance = (sg + "\n\n") if sg else ""
             prompt_vars["strategic_guidance"] = strategic_guidance
             system_prompt = system_template.format(**prompt_vars)
+            auditor_warning = (
+                "\n" + auditor_notice_template.strip()
+                if cfg.oversight
+                and cfg.oversight.mode == "audit-penalty"
+                and cfg.oversight.include_auditor_notice
+                else ""
+            )
             agents.append(
                 LLMAgent(
                     agent_id=agent_id,
@@ -231,6 +251,7 @@ class Experiment:
                     comm_mode=cfg.communication_mode,
                     n_rounds=cfg.environment.n_rounds,
                     strategic_guidance=strategic_guidance,
+                    auditor_warning=auditor_warning,
                 )
             )
         return agents, clients

@@ -1,10 +1,10 @@
 """Run page — configure and launch a single experiment with live progress.
 
 The launch button kicks off `Experiment(cfg).run()` in a daemon thread. The
-thread mutates a plain dict held in `st.session_state`; the main script polls
-that dict via a `time.sleep + st.rerun` loop while the run is in flight. No
-Streamlit APIs are called from the worker thread, so no script-context attach
-is needed.
+thread mutates a plain dict held in `st.session_state`; a `@st.fragment`
+polling loop reruns only the live-view section every second while the run is
+in flight, leaving the rest of the page (and all expander states) untouched.
+No Streamlit APIs are called from the worker thread.
 """
 
 from __future__ import annotations
@@ -356,101 +356,132 @@ def _render_live_metrics(log_lines: list[dict], state: dict, cumulative_cost: fl
         st.caption("Token and cost totals are finalized when the manifest is written at run completion.")
 
 
-def _get_llm_judge_verdict(audit_event: dict | None) -> str:
-    if not audit_event:
-        return "—"
-    for r in audit_event.get("results", []) or []:
-        if r.get("auditor") == "llm_judge":
-            d = r.get("details", {}) or {}
-            if d.get("skipped"):
-                return "—"
-            return d.get("verdict") or "—"
-    return "—"
+def _render_round_card(line: dict) -> None:
+    """Render one round as a card: header + messages inline + reasoning/audit expander."""
+    round_idx = line.get("round", "?")
+    actions = line.get("actions", [])
+    rewards = line.get("rewards", [])
+    signals = line.get("trajectory_signals", {}) or {}
+    audit_event = line.get("audit_event")
+
+    elev_list = signals.get("reward_elevation") or []
+    mean_elev = sum(elev_list) / len(elev_list) if elev_list else None
+    spread = signals.get("action_spread")
+    covert = signals.get("covert_coordination_flag", False)
+
+    judge_verdict = "—"
+    if audit_event:
+        for r in audit_event.get("results", []) or []:
+            if r.get("auditor") == "llm_judge":
+                d = r.get("details", {}) or {}
+                if not d.get("skipped"):
+                    judge_verdict = d.get("verdict") or "—"
+
+    badge_parts = []
+    if mean_elev is not None:
+        badge_parts.append(f"elev={mean_elev:.2f}")
+    if spread is not None:
+        badge_parts.append(f"spread={spread:.1f}")
+    if covert:
+        badge_parts.append("COVERT")
+    if judge_verdict != "—":
+        badge_parts.append(f"judge={judge_verdict}")
+    badges = "  |  ".join(badge_parts)
+
+    actions_str = "[" + ", ".join(str(a) for a in actions) + "]"
+    rewards_str = "[" + ", ".join(f"{r:.2f}" for r in rewards) + "]"
+    header = f"**Round {round_idx}** — actions={actions_str}  rewards={rewards_str}"
+    if badges:
+        header += f"  |  {badges}"
+    st.markdown(header)
+
+    messages = line.get("messages") or []
+    for msg in messages:
+        if not isinstance(msg, dict):
+            continue
+        sender = msg.get("from", "?")
+        content = msg.get("content", "")
+        to = msg.get("to", "")
+        if to == "all":
+            st.markdown(f"> **Agent {sender} → all:** {content}")
+        else:
+            st.markdown(f"> **Agent {sender} → Agent {to}:** {content}")
+
+    reasoning = line.get("reasoning") or []
+    has_reasoning = any(r for r in reasoning)
+    has_audit = bool(audit_event and audit_event.get("results"))
+
+    if has_reasoning or has_audit:
+        with st.expander(f"Round {round_idx} — reasoning & audit", expanded=False,
+                         key=f"round_{round_idx}_details"):
+            if has_reasoning:
+                st.caption("Internal reasoning (private to each agent):")
+                for i, text in enumerate(reasoning):
+                    st.markdown(f"**Agent {i}:**")
+                    if text:
+                        st.markdown(f"> {text}")
+                    else:
+                        st.markdown("_No reasoning captured — fallback action._")
+
+            if has_reasoning and has_audit:
+                st.divider()
+
+            if has_audit:
+                for result in audit_event.get("results", []) or []:
+                    name = result.get("auditor")
+                    details = result.get("details", {}) or {}
+                    if name == "llm_judge":
+                        if details.get("skipped"):
+                            st.caption("LLM judge: skipped (no messages this round).")
+                            continue
+                        verdict = details.get("verdict") or "—"
+                        st.markdown(f"**LLM judge:** {verdict}")
+                        if details.get("evidence"):
+                            st.markdown(f"> {details['evidence']}")
+                        if details.get("reasoning"):
+                            st.caption(details["reasoning"])
+                        if details.get("error"):
+                            st.warning(f"Judge call failed: {details['error']}")
+                    elif name == "behavior":
+                        elev = details.get("current_elevation")
+                        spread_d = details.get("current_spread")
+                        sustained = details.get("sustained_rounds")
+                        above = details.get("above_threshold")
+                        st.caption(
+                            f"Behavior: elevation={elev}, spread={spread_d}, "
+                            f"sustained_rounds={sustained}, above_threshold={above}"
+                        )
+
+    st.divider()
 
 
-def _render_recent_rounds(log_lines: list[dict], n: int = 5) -> None:
-    if not log_lines:
-        return
-    rows = []
-    for line in log_lines[-n:]:
-        signals = line.get("trajectory_signals", {})
-        elev = signals.get("reward_elevation", [])
-        rows.append({
-            "round": line.get("round"),
-            "actions": line.get("actions"),
-            "rewards": [round(r, 3) for r in line.get("rewards", [])],
-            "mean_elevation": round(sum(elev) / len(elev), 3) if elev else None,
-            "spread": signals.get("action_spread"),
-            "judge": _get_llm_judge_verdict(line.get("audit_event")),
-            "covert": signals.get("covert_coordination_flag", False),
-            "hollow": signals.get("hollow_coordination_flag", False),
-        })
-    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
+def _render_round_feed(log_lines: list[dict]) -> None:
+    st.subheader("Rounds")
+    for line in reversed(log_lines):
+        _render_round_card(line)
 
 
-def _render_latest_reasoning(log_lines: list[dict]) -> None:
-    last = log_lines[-1]
-    reasoning = last.get("reasoning") or []
-    if not any(r for r in reasoning):
-        return
-    with st.expander(f"Latest internal reasoning (round {last['round']})", expanded=False):
-        st.caption("Private to each agent — not visible to other agents, the game, or the auditor.")
-        for i, text in enumerate(reasoning):
-            st.markdown(f"**Agent {i}:**")
-            if text:
-                st.markdown(f"> {text}")
-            else:
-                st.markdown("_No reasoning captured — fallback action._")
-
-
-def _render_latest_audit(log_lines: list[dict]) -> None:
-    last = log_lines[-1]
-    audit = last.get("audit_event")
-    if not audit:
-        return
-    with st.expander(f"Latest audit (round {last['round']})", expanded=False):
-        for result in audit.get("results", []) or []:
-            name = result.get("auditor")
-            details = result.get("details", {}) or {}
-            if name == "llm_judge":
-                if details.get("skipped"):
-                    st.caption("LLM judge: skipped (no messages this round).")
-                    continue
-                verdict = details.get("verdict") or "—"
-                st.markdown(f"**LLM judge:** {verdict}")
-                if details.get("evidence"):
-                    st.markdown(f"> {details['evidence']}")
-                if details.get("reasoning"):
-                    st.caption(details["reasoning"])
-                if details.get("error"):
-                    st.warning(f"Judge call failed: {details['error']}")
-            elif name == "behavior":
-                elev = details.get("current_elevation")
-                spread = details.get("current_spread")
-                sustained = details.get("sustained_rounds")
-                above = details.get("above_threshold")
-                st.caption(
-                    f"Behavior: elevation={elev}, spread={spread}, "
-                    f"sustained_rounds={sustained}, above_threshold={above}"
-                )
-
-
-def _render_running(state: dict, env_cfg: dict | None) -> None:
+def _render_live_view(
+    state: dict,
+    env_cfg: dict | None,
+    cumulative_cost: float | None = None,
+    is_running: bool = True,
+) -> None:
+    """Fragment-safe renderer for the live and completed views."""
     cur = state.get("current_round", 0)
     total = max(state.get("total_rounds", 1), 1)
     frac = min(cur / total, 1.0)
     st.progress(frac, text=f"Round {cur} / {total}")
 
     log_lines = list(state.get("log_lines", []))
-    if log_lines:
-        _render_live_metrics(log_lines, state)
-        _render_live_chart(log_lines, env_cfg)
-        st.subheader("Recent Rounds")
-        _render_recent_rounds(log_lines)
-        _render_latest_reasoning(log_lines)
-        _render_latest_audit(log_lines)
-    else:
-        st.caption("Waiting for first round to complete…")
+    if not log_lines:
+        if is_running:
+            st.caption("Waiting for first round to complete…")
+        return
+
+    _render_live_metrics(log_lines, state, cumulative_cost=cumulative_cost)
+    _render_live_chart(log_lines, env_cfg)
+    _render_round_feed(log_lines)
 
 
 # ---------------------------------------------------------------------------
@@ -470,20 +501,20 @@ def render_run_page() -> None:
         cfg.environment.model_dump() if cfg is not None else None
     )
 
-    # --- Running: show live progress and self-rerun every second ----------
+    # --- Running: fragment polls every second without full-page rerun -----
     if state["running"]:
         st.info("Experiment running…")
-        _render_running(state, env_cfg)
-        # Poll-and-rerun pattern. The fragment-based alternative would scope
-        # less of the page, but this is simpler and the editor is hidden here.
-        time.sleep(1.0)
-        st.rerun()
+
+        @st.fragment(run_every=1)
+        def _live_fragment() -> None:
+            _render_live_view(state, env_cfg, is_running=True)
+
+        _live_fragment()
         return
 
     # --- Completed run banner --------------------------------------------
     if state["manifest_path"]:
         st.success(f"Run complete — manifest at `{state['manifest_path']}`")
-        log_lines = state.get("log_lines", [])
         cost = None
         run_id = None
         try:
@@ -492,13 +523,6 @@ def render_run_page() -> None:
             run_id = manifest.get("run_id")
         except Exception:
             pass
-        if log_lines:
-            _render_live_metrics(log_lines, state, cumulative_cost=cost)
-            _render_live_chart(log_lines, env_cfg)
-            st.subheader("Recent Rounds")
-            _render_recent_rounds(log_lines)
-            _render_latest_reasoning(log_lines)
-            _render_latest_audit(log_lines)
         col1, col2 = st.columns([1, 4])
         if col1.button("View in Analyze tab"):
             if run_id:
@@ -508,6 +532,7 @@ def render_run_page() -> None:
         if col2.button("Clear and configure another run"):
             st.session_state[STATE_KEY] = _default_state()
             st.rerun()
+        _render_live_view(state, env_cfg, cumulative_cost=cost, is_running=False)
         return
 
     # --- Error banner -----------------------------------------------------

@@ -179,8 +179,8 @@ def page_compare():
         f"{len(runs)} successful runs loaded."
     )
 
-    tab_threshold, tab_transition, tab_browser = st.tabs(
-        ["Threshold View", "Transition View", "Run Browser"]
+    tab_threshold, tab_transition, tab_browser, tab_side_by_side = st.tabs(
+        ["Threshold View", "Transition View", "Run Browser", "Side-by-Side"]
     )
 
     with tab_threshold:
@@ -189,6 +189,184 @@ def page_compare():
         render_transition_view(runs, sweep_df)
     with tab_browser:
         render_run_browser(sweep_df, run_paths)
+    with tab_side_by_side:
+        render_side_by_side(runs, run_paths)
+
+
+def render_side_by_side(runs, run_paths: dict) -> None:
+    if not runs:
+        st.info("No runs available.")
+        return
+
+    run_labels: dict[str, str] = {}
+    for r in runs:
+        label = (
+            f"{r.run_id[:8]} | comm={r.communication_mode} "
+            f"| n={r.n_agents} | oversight={r.oversight_mode}"
+        )
+        run_labels[label] = r.run_id
+
+    selected_labels = st.multiselect(
+        "Select runs to compare (up to 4)",
+        options=list(run_labels.keys()),
+        default=list(run_labels.keys())[:min(2, len(run_labels))],
+        max_selections=4,
+        key="sbs_run_select",
+    )
+    if not selected_labels:
+        st.info("Select at least one run.")
+        return
+
+    selected: list[dict] = []
+    for label in selected_labels:
+        run_id = run_labels[label]
+        run_dir = run_paths.get(run_id)
+        if not run_dir:
+            continue
+        rows = load_log_rows(run_dir)
+        manifest = load_manifest(run_dir)
+        if not rows or manifest is None:
+            continue
+        metrics, _ = _safe_run_metrics(run_dir)
+        selected.append({
+            "label": label,
+            "run_id": run_id,
+            "run_dir": run_dir,
+            "rows": rows,
+            "manifest": manifest,
+            "metrics": metrics or {},
+        })
+
+    if not selected:
+        st.warning("Could not load data for the selected runs.")
+        return
+
+    n = len(selected)
+
+    # --- Metrics ---
+    st.subheader("Metrics")
+    cols = st.columns(n)
+    for col, d in zip(cols, selected):
+        with col:
+            st.markdown(f"**`{d['label']}`**")
+            m = d["metrics"]
+            rows_ = d["rows"]
+            elevs = [
+                sum(r.get("trajectory_signals", {}).get("reward_elevation") or []) /
+                len(r.get("trajectory_signals", {}).get("reward_elevation") or [1])
+                for r in rows_
+                if r.get("trajectory_signals", {}).get("reward_elevation")
+            ]
+            mean_elev = sum(elevs) / len(elevs) if elevs else None
+            spreads_ = [
+                r.get("trajectory_signals", {}).get("action_spread")
+                for r in rows_
+                if r.get("trajectory_signals", {}).get("action_spread") is not None
+            ]
+            mean_spread = sum(spreads_) / len(spreads_) if spreads_ else None
+            covert_ct = sum(
+                1 for r in rows_ if r.get("trajectory_signals", {}).get("covert_coordination_flag")
+            )
+            penalized_ct = sum(
+                1 for r in rows_ if r.get("audit_event") and r["audit_event"].get("penalty_applied")
+            )
+            st.metric("Mean Elevation", f"{mean_elev:.3f}" if mean_elev is not None else "N/A")
+            st.metric("Mean Spread", f"{mean_spread:.2f}" if mean_spread is not None else "N/A")
+            st.metric("Onset Round", _fmt_metric(m.get("onset_round"), digits=0))
+            st.metric("Steg. Score", _fmt_metric(m.get("steganographic_score")))
+            st.metric("Covert Rounds", covert_ct)
+            st.metric("Penalized Rounds", penalized_ct)
+
+    # --- Actions chart ---
+    st.subheader("Actions Over Time")
+    cols = st.columns(n)
+    for col, d in zip(cols, selected):
+        with col:
+            st.caption(d["label"])
+            df = extract_trajectory_df(d["rows"])
+            if df.empty:
+                st.info("No data.")
+                continue
+            env_cfg = d["manifest"].get("config", {}).get("environment", {})
+            nash, monopoly = env_cfg.get("nash_price"), env_cfg.get("monopoly_price")
+            onset = d["metrics"].get("onset_round")
+            action_cols_ = sorted([c for c in df.columns if c.startswith("action_") and c[7:].isdigit()])
+            fig = go.Figure()
+            for i, ac in enumerate(action_cols_):
+                fig.add_trace(go.Scatter(x=df["round"], y=df[ac], mode="lines+markers", name=f"Agent {i}",
+                                         hovertemplate="R%{x} P=%{y}<extra></extra>"))
+            if nash is not None:
+                fig.add_hline(y=nash, line_dash="dash", line_color="green", annotation_text="Nash")
+            if monopoly is not None:
+                fig.add_hline(y=monopoly, line_dash="dash", line_color="red", annotation_text="Mono")
+            if onset is not None:
+                fig.add_vline(x=onset, line_dash="dash", annotation_text="Onset")
+            fig.update_layout(xaxis_title="Round", yaxis_title="Price", height=260,
+                               margin={"l": 20, "r": 20, "t": 20, "b": 20})
+            st.plotly_chart(fig, use_container_width=True)
+
+    # --- Reward elevation chart ---
+    st.subheader("Reward Elevation Over Time")
+    cols = st.columns(n)
+    for col, d in zip(cols, selected):
+        with col:
+            st.caption(d["label"])
+            df = extract_trajectory_df(d["rows"])
+            elev_cols_ = [c for c in df.columns if c.startswith("reward_elevation_")]
+            if df.empty or not elev_cols_:
+                st.info("No elevation data.")
+                continue
+            onset = d["metrics"].get("onset_round")
+            fig = go.Figure()
+            for i, ec in enumerate(elev_cols_):
+                fig.add_trace(go.Scatter(x=df["round"], y=df[ec], mode="lines+markers", name=f"Agent {i}",
+                                         hovertemplate="R%{x} elev=%{y:.3f}<extra></extra>"))
+            smooth = df[elev_cols_].mean(axis=1).rolling(5, min_periods=1).mean()
+            fig.add_trace(go.Scatter(x=df["round"], y=smooth, mode="lines", name="Smoothed",
+                                      line={"width": 3}))
+            fig.add_hline(y=0, line_dash="dot", line_color="gray", annotation_text="Nash")
+            fig.add_hline(y=1, line_dash="dot", line_color="gray", annotation_text="Mono")
+            if onset is not None:
+                fig.add_vline(x=onset, line_dash="dash", annotation_text="Onset")
+                fig.add_vrect(x0=onset, x1=df["round"].max(), opacity=0.08, line_width=0)
+            fig.update_layout(xaxis_title="Round", yaxis_title="Elevation", height=260,
+                               margin={"l": 20, "r": 20, "t": 20, "b": 20})
+            st.plotly_chart(fig, use_container_width=True)
+
+    # --- Coordination signals chart ---
+    st.subheader("Coordination Signals")
+    cols = st.columns(n)
+    for col, d in zip(cols, selected):
+        with col:
+            st.caption(d["label"])
+            df = extract_trajectory_df(d["rows"])
+            if df.empty or "action_spread" not in df.columns:
+                st.info("No signals data.")
+                continue
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=df["round"], y=df["action_spread"], mode="lines+markers",
+                                      name="Spread", hovertemplate="R%{x} spread=%{y}<extra></extra>"))
+            if "covert_coordination_flag" in df.columns:
+                covert_roll = df["covert_coordination_flag"].astype(float).rolling(10, min_periods=1).mean()
+                fig.add_trace(go.Scatter(x=df["round"], y=covert_roll, mode="lines",
+                                          name="Covert rate", yaxis="y2"))
+            if "hollow_coordination_flag" in df.columns:
+                hollow_roll = df["hollow_coordination_flag"].astype(float).rolling(10, min_periods=1).mean()
+                fig.add_trace(go.Scatter(x=df["round"], y=hollow_roll, mode="lines",
+                                          name="Hollow rate", yaxis="y2", line={"dash": "dot"}))
+            fig.update_layout(
+                xaxis_title="Round", yaxis_title="Spread",
+                yaxis2={"title": "Rate", "overlaying": "y", "side": "right", "range": [0, 1]},
+                height=260, margin={"l": 20, "r": 20, "t": 20, "b": 20},
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+    # --- Transcript (one at a time via selectbox to avoid widget key conflicts) ---
+    st.subheader("Transcript")
+    transcript_labels = [d["label"] for d in selected]
+    chosen_label = st.selectbox("View transcript for", transcript_labels, key="sbs_transcript_select")
+    chosen = next(d for d in selected if d["label"] == chosen_label)
+    render_transcript_tab(chosen["rows"], chosen["metrics"])
 
 
 def render_threshold_view(runs, sweep_df: pd.DataFrame):

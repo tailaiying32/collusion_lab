@@ -1,39 +1,13 @@
-# Phase 8 §8.2 — Onset threshold study (oversight isolated: none only).
-# Grid size: 3 comm × 3 memory × 2 n_agents × 20 seeds × 1 oversight = 360 runs.
-mode: grid
+# Phase 8 Part A: Onset Threshold Study
+# Objective: Identify the thresholds (Comm Mode, Memory, Count) for collusion emergence.
+# Runs: 2 comm_modes * 3 windows * 2 counts * 5 seeds = 60 runs.
+
 base_config: configs/base.yaml
+mode: grid
 overrides:
-  environment.seed:
-    - 1
-    - 2
-    - 3
-    - 4
-    - 5
-    - 6
-    - 7
-    - 8
-    - 9
-    - 10
-    - 11
-    - 12
-    - 13
-    - 14
-    - 15
-    - 16
-    - 17
-    - 18
-    - 19
-    - 20
-  communication_mode:
-    - none
-    - public
-    - private
-  agents.memory_window:
-    - 1
-    - 5
-    - 10
-  environment.n_agents:
-    - 2
-    - 3
-  oversight.mode:
-    - none
+  communication_mode: ["none", "public"]
+  agents.memory_window: [1, 5, 10]
+  environment.n_agents: [2, 3]
+  environment.seed: [101, 102, 103, 104, 105]
+  oversight.mode: ["none"]
+  oversight.audit_probability: [0.0]

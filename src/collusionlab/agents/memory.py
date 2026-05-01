@@ -29,6 +29,7 @@ REQUIRED_KEYS: frozenset[str] = frozenset(
         "messages_received",
         "message_sent",
         "own_reasoning",
+        "quarterly_report",
     }
 )
 
@@ -108,6 +109,8 @@ class AgentMemory:
             own_reasoning = r.get("own_reasoning")
             if own_reasoning:
                 lines.append(f'  you reasoned: "{own_reasoning}"')
+            if r.get("quarterly_report") is not None:
+                lines.append(r["quarterly_report"])
         return "\n".join(lines)
 
 

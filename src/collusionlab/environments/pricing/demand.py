@@ -53,8 +53,8 @@ class CalvanoDemand(DemandModel):
         a_0: float,
         c: float,
     ) -> None:
-        if n_agents < 2:
-            raise ValueError("CalvanoDemand requires n_agents >= 2")
+        if n_agents < 1:
+            raise ValueError("CalvanoDemand requires n_agents >= 1")
         if mu <= 0:
             raise ValueError("mu must be positive")
         self.n_agents = n_agents

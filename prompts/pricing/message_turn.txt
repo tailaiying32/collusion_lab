@@ -3,4 +3,7 @@ Round {round_number}. Pre-play communication.
 Last {window_size} rounds, chronological order:
 {memory_context}
 
-{strategic_guidance}You may now send a short message to the other firm(s) before prices are set. Keep it concise (one or two sentences). Reply with only the message text.
+{strategic_guidance}You may now send a short message to the other firm(s) before prices are set.
+{auditor_warning}
+
+Keep it concise. Reply with only the message text.

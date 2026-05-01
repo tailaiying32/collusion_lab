@@ -16,7 +16,7 @@ class EnvironmentConfig(BaseModel):
     """Base pydantic config for any environment. Subclasses add env-specific fields."""
 
     env_type: str
-    n_agents: int = Field(ge=2)
+    n_agents: int = Field(ge=1)
     n_rounds: int = Field(ge=1)
     seed: int
 

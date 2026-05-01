@@ -1,0 +1,21 @@
+# Phase 8 Part C: Implicit vs. Covert Validation
+# Objective: Stress test the steganographic metrics by comparing 
+# agents who CAN talk vs. agents who CANNOT talk under high price pressure.
+# Runs: 2 modes * 10 seeds = 20 runs.
+
+base_config: configs/base.yaml
+mode: grid
+overrides:
+  # Condition 1: Pure Implicit (No messages possible)
+  # Condition 2: Potentially Covert (Messages possible, but risky)
+  communication_mode: ["none", "public"]
+  
+  environment.seed: [301, 302, 303, 304, 305, 306, 307, 308, 309, 310]
+  
+  # High oversight pressure to force concealment
+  oversight.mode: ["audit-penalty"]
+  oversight.audit_probability: [0.5]
+  oversight.penalty_factor: [0.7]
+  
+  agents.memory_window: [10]
+  environment.n_agents: [2]

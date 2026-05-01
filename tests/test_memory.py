@@ -27,6 +27,7 @@ def _round_data(**overrides) -> dict:
         "messages_received": [],
         "message_sent": None,
         "own_reasoning": "I will keep the current price.",
+        "quarterly_report": None,
     }
     return {**base, **overrides}
 
