@@ -1,233 +1,141 @@
 # CollusionLab
 
-A low-compute research platform for studying the **onset** and **concealment** of collusion in small LLM multi-agent systems.
+A low-compute research platform for studying how LLM agents respond to
+oversight — specifically, whether penalizing explicit collusion suppresses
+it or drives it underground.
 
-## Overview
+## Research Question
 
-CollusionLab is a reproducible testbed for experiments in which multiple LLM agents interact in repeated games, first under conditions that may induce collusion and then under increasing oversight designed to suppress explicit coordination. The platform targets small, affordable models and short-context runs, making it practical for student research without an HPC cluster.
+Prior work (e.g. [Agrawal et al., 2025](https://arxiv.org/abs/2507.01413))
+establishes that LLM agents *will* collude when given communication channels.
+CollusionLab asks what happens next:
 
-The central research question is:
-
-> Under what environmental and communication conditions do small LLM agents begin colluding, and how do they adapt when oversight penalizes explicit collusion?
+> When oversight penalizes explicit coordination, do LLM agents stop colluding —
+> or do they adapt, sustaining above-Nash profits while scrubbing colluding
+> language from their transcripts?
 
 This breaks into two linked subproblems:
 
-- **Onset** — which variables (communication access, repeated interaction, memory, agent count) make collusion appear.
-- **Concealment** — whether oversight stops collusion entirely or instead pushes it into less explicit forms that are harder to detect from transcripts alone.
+- **Onset** — replicating the baseline: which conditions (communication access,
+  repeated interaction, memory, agent count) produce collusion. Tested under
+  Calvano logit demand (symmetric to prior work) and Bertrand winner-take-all
+  demand (where the Bertrand paradox makes tacit collusion especially notable).
+- **Concealment** — the novel contribution: does probabilistic auditing + profit
+  penalties eliminate collusion, or does it produce *covert coordination* —
+  clean language, dirty behavior — or *hollow coordination* — collusion language
+  that persists while profits converge back to Nash?
+
+## What Makes This Different
+
+| | Agrawal et al. (2025) | CollusionLab |
+|---|---|---|
+| **Core question** | Do agents collude? | Do agents *adapt* under oversight? |
+| **Market structure** | Continuous double auction | Calvano logit + Bertrand (pluggable) |
+| **Oversight** | Binary (CEO urgency / overseer) | Probabilistic audit + penalty, LLM judge or behavioral |
+| **Detection** | Pricing metrics | Multi-signal auditing layer (transcript, behavioral, temporal, LLM judge, risk fusion) |
+| **Models** | GPT-4.1, Claude Sonnet | Small/affordable models (gpt-4o-mini, DeepSeek) |
+| **Artifact** | Workshop paper | Open-source, reproducible platform |
 
 ## Architecture
 
-The platform is organized into five modules.
+Five modules, cleanly separated:
 
 | Module | Location | Purpose |
 |---|---|---|
-| Environment engine | `src/collusionlab/environments/` | Repeated games with deterministic rules and seeded RNG |
-| Agent layer | `src/collusionlab/agents/` | LLM wrappers with prompts, bounded memory, and pluggable model clients |
-| Experiment runner | `src/collusionlab/runner/` | Single runs (`experiment.py`) and parameter sweeps (`sweep.py`) with parallel execution |
-| Detection layer | `src/collusionlab/auditing/`, `src/collusionlab/metrics/` | Collusion, concealment, and oversight-response metrics |
-| Analysis UI | `src/collusionlab/ui/app.py` | Streamlit app for trajectory replay and cross-run comparison |
+| Environment engine | `src/collusionlab/environments/` | Repeated pricing games; Calvano and Bertrand demand models |
+| Agent layer | `src/collusionlab/agents/` | LLM wrappers with bounded memory and pluggable backends |
+| Experiment runner | `src/collusionlab/runner/` | Single runs and parallel parameter sweeps |
+| Oversight + detection | `src/collusionlab/auditing/` | Transcript, behavioral, temporal, LLM-judge auditors; risk fusion; penalty enforcement |
+| Analysis UI | `src/collusionlab/ui/app.py` | Streamlit dashboard for trajectory replay and transcript inspection |
 
-### Repository layout
+## Key Metrics
 
-```text
-collusionlab/
-├── configs/                    # YAML run configs
-│   ├── base.yaml
-│   ├── pricing_public_chat.yaml
-│   ├── pricing_private_chat.yaml
-│   └── pricing_audit.yaml
-├── src/
-│   └── collusionlab/
-│       ├── environments/       # Game environments
-│       │   ├── base.py
-│       │   ├── communication.py
-│       │   └── pricing/        # Calvano-style repeated pricing game
-│       ├── agents/             # LLM agent wrappers and model clients
-│       │   ├── model_client.py
-│       │   ├── backends/       # OpenAI, Anthropic, and DeepSeek backends
-│       │   ├── memory.py
-│       │   └── llm_agent.py
-│       ├── runner/             # Experiment and sweep runners
-│       ├── auditing/           # Oversight and transcript auditing
-│       ├── metrics/            # Collusion and concealment metrics
-│       └── ui/                 # Streamlit analysis dashboard
-├── data/
-│   ├── raw/                    # Round-level JSONL logs
-│   └── processed/              # Derived metrics tables
-├── prompts/pricing/            # System and turn prompt templates
-├── notebooks/                  # Jupyter analysis notebooks
-├── scripts/                    # Utility scripts (e.g. Calvano calibration)
-├── tests/                      # Unit tests
-├── docs/                       # Design notes and implementation plan
-├── environment.yml             # Core conda environment
-├── environment-gpu.yml         # Optional GPU environment
-└── .env.example                # API key template
-```
+| Metric | Description |
+|---|---|
+| Price elevation | Agent prices relative to Nash baseline |
+| Profit uplift | Profit gain vs. no-communication condition |
+| Covert coordination | Collusion language declines but above-baseline profits persist |
+| Hollow coordination | Collusion language persists; profits converge back to Nash |
+| Price-follow rate | Implicit coordination signal: frequency of mirroring rival price moves |
+| Audit response | How flag rate and profit elevation co-vary as audit probability increases |
 
 ## Installation
 
 ### Prerequisites
-
-- [Mamba](https://mamba.readthedocs.io/) or [Micromamba](https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html) for environment management
-- An OpenAI API key (required for the default backend)
-- An Anthropic API key (optional, for the Anthropic backend)
-- A DeepSeek API key (optional, for the DeepSeek backend)
-
-### 1. Create the environment
+- [Mamba](https://mamba.readthedocs.io/) or [Micromamba](https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html)
+- OpenAI API key (required); Anthropic and DeepSeek keys (optional)
 
 ```bash
 mamba env create -f environment.yml
 mamba activate collusion_lab
-```
-
-For local GPU inference, use the optional environment instead:
-
-```bash
-mamba env create -f environment-gpu.yml
-mamba activate collusion_lab_gpu
-```
-
-### 2. Configure API keys
-
-Copy `.env.example` to `.env` and fill in your API keys:
-
-```bash
-cp .env.example .env
-```
-
-```dotenv
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=...   # optional
-DEEPSEEK_API_KEY=...    # optional
-```
-
-### 3. Install the package (editable)
-
-```bash
+cp .env.example .env   # fill in API keys
 pip install -e src/
 ```
 
+For local GPU inference: `mamba env create -f environment-gpu.yml`
+
 ## Usage
 
-### Running a single experiment
-
+### Single experiment
 ```bash
 python -m collusionlab.runner.experiment --config configs/base.yaml
 ```
 
-Output logs are written to `data/raw/` as JSONL files.
-
-### Running a parameter sweep
-
-Define a sweep config (grid or list mode) and run it:
-
+### Parameter sweep
 ```bash
-PYTHONPATH=src python -m collusionlab.runner.sweep --sweep configs/sweep_comm.yaml --max-workers 4
+PYTHONPATH=src python -m collusionlab.runner.sweep \
+  --sweep configs/sweep_comm.yaml --max-workers 4
 ```
 
-Runs execute in parallel via `ProcessPoolExecutor`. Each run writes its own `log.jsonl` and `manifest.json` under `data/raw/{run_id}/`. The sweep writes an aggregate `sweep_manifest.json` under `data/raw/sweep_{sweep_id}/` with per-run status, timing, and config snapshots. Failed runs are recorded (continue-on-error) without aborting the sweep.
-
-Example sweep configs:
-
-| Config | Mode | Description |
-|---|---|---|
-| `sweep_comm.yaml` | grid | 3 seeds x 3 communication modes (9 runs) |
-| `sweep_list_example.yaml` | list | 3 explicit configurations |
-
-### Configuration
-
-Every run is fully defined by a YAML config. The base config (`configs/base.yaml`) sets defaults; variant configs extend it:
-
-```yaml
-environment:
-  n_agents: 2
-  n_rounds: 50
-  seed: 42
-  demand_model: calvano
-  nash_price: 8
-  monopoly_price: 10
-
-agent:
-  backend: openai      # openai | anthropic | deepseek
-  model: gpt-4o-mini
-  memory_window: 5
-  temperature: 0.2
-
-communication:
-  mode: none           # none | public | private
-
-oversight:
-  mode: none           # none | audit-plus-penalty
-  audit_probability: 0.0
-  penalty_factor: 1.0
+### Analysis dashboard
+```bash
+PYTHONPATH=src streamlit run src/collusionlab/ui/app.py
 ```
 
-Pre-built variant configs:
+## Configs
 
 | Config | Communication | Oversight |
 |---|---|---|
 | `base.yaml` | none | none |
 | `pricing_public_chat.yaml` | public | none |
 | `pricing_private_chat.yaml` | private | none |
-| `pricing_audit.yaml` | public | audit-plus-penalty |
+| `pricing_audit.yaml` | public | audit + penalty |
 
-### Analysis UI
+Core parameters (from `configs/base.yaml`):
+```yaml
+environment:
+  n_agents: 2
+  n_rounds: 50
+  seed: 42
+  demand_model: calvano   # or: bertrand
+  nash_price: 8
+  monopoly_price: 10
 
-Launch the Streamlit dashboard to inspect experiment runs:
+agent:
+  backend: openai         # openai | anthropic | deepseek
+  model: gpt-4o-mini
+  memory_window: 5
+  temperature: 0.2
 
-```bash
-PYTHONPATH=src streamlit run src/collusionlab/ui/app.py
+communication:
+  mode: none              # none | public | private
+
+oversight:
+  mode: none              # none | audit-plus-penalty
+  audit_probability: 0.0
+  penalty_factor: 1.0
 ```
-
-The dashboard provides four navigation pages (Analyze is currently implemented; others are placeholders):
-
-- **Analyze** (available now) — single-run inspection with four tabs:
-  - **Config** — run metadata (elapsed time, tokens, cost) and full YAML config
-  - **Trajectory** — per-agent action and reward elevation charts with Nash/monopoly reference lines
-  - **Transcript** — round-by-round timeline with messages, audit events, and flags; supports filtering and keyword search
-  - **Metrics** — quick summary stats (mean spread, elevation, audit/flag counts)
-- **Run** (coming soon) — YAML config editor with live validation and per-round progress
-- **Sweep** (coming soon) — parameter grid preview and background sweep execution
-- **Compare** (coming soon) — heatmaps and cross-run comparison for sweep results
-
-### Notebooks
-
-Jupyter notebooks for exploratory analysis are in `notebooks/`. Launch with:
-
-```bash
-jupyter lab
-```
-
-## Key Metrics
-
-| Metric | Description |
-|---|---|
-| Price elevation | Agent prices relative to the competitive Nash baseline |
-| Price convergence | Reduction in price dispersion over rounds |
-| Profit uplift | Profit gain relative to no-communication settings |
-| Covert coordination | "Clean language, dirty behavior" — collusion language declines but above-baseline profits persist |
-| Hollow coordination | Collusion language persists while profits remain near baseline |
-| Price-follow rate | Implicit coordination signal: how often one agent mirrors the other's price move |
-
-## Testing
-
-```bash
-pytest tests/
-```
-
-Tests use synthetic JSONL fixtures and mock `ModelClient.generate()` calls — no network access required.
 
 ## Design Principles
 
-- **Low compute first** — prompt-only agents and short-context interactions; no GPU required for the core environment.
-- **Reproducibility first** — every run is fully defined by a config and seed; surprises can always be replayed.
-- **Interpretability first** — logs and the Streamlit replay UI are core features, not afterthoughts.
-- **One strong environment before many** — depth in a single pricing game before breadth across domains.
-- **Extensible architecture** — demand models, model clients, environments, auditors, and communication modes are all pluggable; adding a new variant never requires touching core logic.
+- **Concealment-first** — the auditing and oversight infrastructure is a first-class feature, not an afterthought.
+- **Low compute** — prompt-only agents, small models, no GPU required.
+- **Reproducibility** — every run fully specified by config + seed; anything surprising can be replayed.
+- **Pluggable** — demand models, backends, auditors, and communication modes are all swappable without touching core logic.
 
 ## Related Work
 
-1. [Evaluating LLM Agent Collusion in Double Auctions](https://arxiv.org/abs/2507.01413)
+1. [Evaluating LLM Agent Collusion in Double Auctions](https://arxiv.org/abs/2507.01413) — Agrawal et al. (2025); establishes onset baseline this work extends
 2. [Secret Collusion among AI Agents: Multi-Agent Deception via Steganography](https://openreview.net/forum?id=bnNSQhZJ88)
 3. [Detecting Steganographic Collusion in Multi-Agent LLMs](https://arxiv.org/abs/2510.04303)
 4. [Detecting Multi-Agent Collusion Through Multi-Agent Interpretability](https://arxiv.org/abs/2604.01151)
