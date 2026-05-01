@@ -500,17 +500,6 @@ def _render_round_card(line: dict) -> None:
     st.markdown(header)
 
     messages = line.get("messages") or []
-    for msg in messages:
-        if not isinstance(msg, dict):
-            continue
-        sender = msg.get("from", "?")
-        content = msg.get("content", "")
-        to = msg.get("to", "")
-        if to == "all":
-            st.markdown(f"> **Agent {sender} → all:** {content}")
-        else:
-            st.markdown(f"> **Agent {sender} → Agent {to}:** {content}")
-
     reasoning = normalize_reasoning(line.get("reasoning") or [])
     has_communication_reasoning = any(r.get("communication") for r in reasoning)
     has_pricing_reasoning = any(r.get("pricing") for r in reasoning)
@@ -532,6 +521,23 @@ def _render_round_card(line: dict) -> None:
                     continue
                 st.markdown(f"**Agent {i}:**")
                 st.markdown(f"> {text}")
+
+    if messages:
+        with st.expander(
+            f"Round {round_idx} - messages sent ({len(messages)})",
+            expanded=False,
+            key=f"round_{round_idx}_messages_sent",
+        ):
+            for msg in messages:
+                if not isinstance(msg, dict):
+                    continue
+                sender = msg.get("from", "?")
+                content = msg.get("content", "")
+                to = msg.get("to", "")
+                if to == "all":
+                    st.markdown(f"> **Agent {sender} -> all:** {content}")
+                else:
+                    st.markdown(f"> **Agent {sender} -> Agent {to}:** {content}")
 
     if has_pricing_reasoning:
         with st.expander(

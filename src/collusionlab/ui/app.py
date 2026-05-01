@@ -1000,15 +1000,6 @@ def render_transcript_tab(rows: list[dict], metrics: dict | None = None):
                 sig_parts.append(f"follow={pfi:.2f}" if isinstance(pfi, float) else f"follow={pfi}")
             col3.write(f"**Flags:** {', '.join(sig_parts) if sig_parts else 'none'}")
 
-            # Messages
-            if messages:
-                with st.expander(f"Messages ({len(messages)})"):
-                    for m in messages:
-                        sender = m.get("from", "?")
-                        content = m.get("content", "")
-                        content = _highlight_keyword(content, keyword_filter)
-                        st.markdown(f"**Agent {sender}:** {content}")
-
             reasoning = normalize_reasoning(row.get("reasoning") or [])
             comm_count = sum(1 for r in reasoning if r.get("communication"))
             pricing_count = sum(1 for r in reasoning if r.get("pricing"))
@@ -1026,6 +1017,19 @@ def render_transcript_tab(rows: list[dict], metrics: dict | None = None):
                             continue
                         st.markdown(f"**Agent {agent_id}:**")
                         st.markdown(f"> {text}")
+
+            # Messages sent
+            if messages:
+                with st.expander(f"Messages sent ({len(messages)})"):
+                    for m in messages:
+                        sender = m.get("from", "?")
+                        to = m.get("to", "")
+                        content = m.get("content", "")
+                        content = _highlight_keyword(content, keyword_filter)
+                        if to == "all":
+                            st.markdown(f"**Agent {sender} -> all:** {content}")
+                        else:
+                            st.markdown(f"**Agent {sender} -> Agent {to}:** {content}")
 
             if pricing_count:
                 with st.expander(
