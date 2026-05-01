@@ -42,7 +42,7 @@ def test_calvano_config_auto_calibrates_equilibria():
     import yaml
     from collusionlab.environments.pricing.config import PricingConfig
 
-    with (ROOT / "configs" / "base.yaml").open() as f:
+    with (ROOT / "configs" / "base_calvano.yaml").open() as f:
         raw = yaml.safe_load(f)
     env_raw = {k: v for k, v in raw["environment"].items() if not k.startswith("_")}
     cfg = PricingConfig(**env_raw)
@@ -107,7 +107,7 @@ def test_bertrand_winner_takes_all():
 def _calibrated_config(**overrides) -> PricingConfig:
     import yaml
 
-    with (ROOT / "configs" / "base.yaml").open() as f:
+    with (ROOT / "configs" / "base_calvano.yaml").open() as f:
         env_cfg = yaml.safe_load(f)["environment"]
     env_cfg.pop("_calibration_note", None)
     env_cfg.update(overrides)
@@ -143,6 +143,7 @@ def test_bertrand_default_nash_price_respects_constrained_grid_floor():
         price_min=3,
         price_max=15,
         profit_scale=1.0,
+        forced_initial_price=None,
     )
     game = PricingGame(cfg)
     nash_profit, _ = game.reward_elevation_baseline()
@@ -246,3 +247,44 @@ def test_get_environment_returns_instance():
     game = get_environment(cfg)
     assert isinstance(game, GameEnvironment)
     assert isinstance(game, PricingGame)
+
+
+# ---------------------------------------------------------------------------
+# forced_initial_price
+# ---------------------------------------------------------------------------
+
+
+def test_forced_initial_price_reset_populates_obs():
+    base_cfg = _calibrated_config()
+    nash = base_cfg.nash_price
+    cfg = _calibrated_config(forced_initial_price=nash)
+    game = PricingGame(cfg)
+    obs = game.reset(seed=0)
+
+    assert obs["prices"] == [nash, nash]
+    assert len(obs["quantities"]) == 2
+    assert all(q > 0 for q in obs["quantities"])
+    assert len(obs["profits"]) == 2
+    assert math.isclose(obs["profits"][0], obs["profits"][1], abs_tol=1e-9)
+    assert obs["profits"][0] > 0
+    assert obs["cumulative_profits"] == [0.0, 0.0]
+    assert obs["round"] == 0
+
+
+def test_forced_initial_price_reset_backward_compat():
+    cfg = _calibrated_config(forced_initial_price=None)
+    game = PricingGame(cfg)
+    obs = game.reset(seed=0)
+
+    assert obs["prices"] == []
+    assert obs["quantities"] == []
+    assert obs["profits"] == []
+    assert obs["cumulative_profits"] == [0.0, 0.0]
+    assert obs["round"] == 0
+
+
+def test_forced_initial_price_out_of_range_raises():
+    with pytest.raises(ValueError, match="forced_initial_price out of grid range"):
+        _calibrated_config(forced_initial_price=0)  # below price_min=1
+    with pytest.raises(ValueError, match="forced_initial_price out of grid range"):
+        _calibrated_config(forced_initial_price=101)  # above price_max=100

@@ -50,6 +50,8 @@ MODEL_TO_BACKEND: dict[str, str] = {
     for backend, models in BACKEND_MODELS.items()
     for model in models
 }
+_COMM_OPTIONS = ["none", "public", "private"]
+_AUDIT_OPTIONS = ["none", "audit-penalty"]
 
 PREVIEW_CAP = 100
 
@@ -345,6 +347,47 @@ def _validate_base_yaml(text: str) -> tuple[str | None, dict | None]:
         return f"Base config {type(e).__name__}: {e}", None
 
 
+def _patch_top_level(text: str, key: str, value: str) -> str:
+    try:
+        data = yaml.safe_load(text) or {}
+    except yaml.YAMLError:
+        return text
+    if not isinstance(data, dict):
+        return text
+    data[key] = value
+    return yaml.safe_dump(data, sort_keys=False)
+
+
+def _patch_oversight_mode(text: str, mode: str) -> str:
+    try:
+        data = yaml.safe_load(text) or {}
+    except yaml.YAMLError:
+        return text
+    if not isinstance(data, dict):
+        return text
+    oversight = data.get("oversight")
+    if not isinstance(oversight, dict):
+        oversight = {}
+    oversight["mode"] = mode
+    data["oversight"] = oversight
+    return yaml.safe_dump(data, sort_keys=False)
+
+
+def _patch_auditor_models(text: str, updates: dict[str, str]) -> str:
+    try:
+        data = yaml.safe_load(text) or {}
+    except yaml.YAMLError:
+        return text
+    if not isinstance(data, dict):
+        return text
+    oversight = data.get("oversight")
+    if not isinstance(oversight, dict):
+        return text
+    oversight.update(updates)
+    data["oversight"] = oversight
+    return yaml.safe_dump(data, sort_keys=False)
+
+
 def _patch_agent_models(text: str, updates: dict[str, str]) -> str:
     try:
         data = yaml.safe_load(text) or {}
@@ -387,6 +430,134 @@ def _render_base_model_picker() -> None:
             text,
             {"backend": selected_backend, "model": selected_model},
         )
+        st.rerun()
+
+
+def _render_base_auditor_model_picker() -> None:
+    text = st.session_state.get(BASE_EDITOR_KEY, "")
+    _, base_data = _validate_base_yaml(text)
+    if not isinstance(base_data, dict):
+        return
+    cfg = ExperimentConfig(**base_data)
+    oversight = cfg.oversight
+    if oversight.mode != "audit-penalty" or not oversight.llm_judge_enabled:
+        return
+    judge_model_options = list(MODEL_TO_BACKEND.keys())
+    if oversight.llm_judge_model not in judge_model_options:
+        judge_model_options = [oversight.llm_judge_model] + judge_model_options
+    selected_judge_model = st.selectbox(
+        "Auditor model",
+        options=judge_model_options,
+        index=judge_model_options.index(oversight.llm_judge_model),
+        key="sweep_base_auditor_model",
+    )
+    selected_judge_backend = MODEL_TO_BACKEND.get(selected_judge_model, oversight.llm_judge_backend)
+    if (
+        selected_judge_model != oversight.llm_judge_model
+        or selected_judge_backend != oversight.llm_judge_backend
+    ):
+        st.session_state[BASE_EDITOR_KEY] = _patch_auditor_models(
+            text,
+            {
+                "llm_judge_backend": selected_judge_backend,
+                "llm_judge_model": selected_judge_model,
+            },
+        )
+        st.rerun()
+
+
+def _patch_environment(text: str, updates: dict) -> str:
+    try:
+        data = yaml.safe_load(text) or {}
+    except yaml.YAMLError:
+        return text
+    if not isinstance(data, dict):
+        return text
+    env = data.get("environment")
+    if not isinstance(env, dict):
+        return text
+    env.update(updates)
+    data["environment"] = env
+    return yaml.safe_dump(data, sort_keys=False)
+
+
+def _render_base_mode_picker() -> None:
+    text = st.session_state.get(BASE_EDITOR_KEY, "")
+    _, base_data = _validate_base_yaml(text)
+    if not isinstance(base_data, dict):
+        return
+    cfg = ExperimentConfig(**base_data)
+    c1, c2 = st.columns(2)
+    selected_comm = c1.selectbox(
+        "Communication mode",
+        options=_COMM_OPTIONS,
+        index=_COMM_OPTIONS.index(cfg.communication_mode),
+        key="sweep_base_comm_mode",
+    )
+    selected_audit = c2.selectbox(
+        "Audit mode",
+        options=_AUDIT_OPTIONS,
+        index=_AUDIT_OPTIONS.index(cfg.oversight.mode),
+        key="sweep_base_audit_mode",
+    )
+    changed = False
+    editor = text
+    if selected_comm != cfg.communication_mode:
+        editor = _patch_top_level(editor, "communication_mode", selected_comm)
+        changed = True
+    if selected_audit != cfg.oversight.mode:
+        editor = _patch_oversight_mode(editor, selected_audit)
+        changed = True
+    if cfg.oversight.mode == "audit-penalty":
+        audit_prob = st.slider(
+            "Audit probability",
+            min_value=0.0,
+            max_value=1.0,
+            value=float(cfg.oversight.audit_probability),
+            step=0.05,
+            key="sweep_base_audit_probability",
+        )
+        if audit_prob != cfg.oversight.audit_probability:
+            editor = _patch_auditor_models(editor, {"audit_probability": audit_prob})
+            changed = True
+    if changed:
+        st.session_state[BASE_EDITOR_KEY] = editor
+        st.rerun()
+
+
+def _render_base_game_controls() -> None:
+    text = st.session_state.get(BASE_EDITOR_KEY, "")
+    _, base_data = _validate_base_yaml(text)
+    if not isinstance(base_data, dict):
+        return
+    cfg = ExperimentConfig(**base_data)
+    c1, c2 = st.columns(2)
+    selected_rounds = c1.number_input(
+        "Rounds",
+        min_value=1,
+        max_value=1000,
+        value=cfg.environment.n_rounds,
+        step=1,
+        key="sweep_base_n_rounds",
+    )
+    selected_agents = c2.number_input(
+        "Agents",
+        min_value=2,
+        max_value=10,
+        value=cfg.environment.n_agents,
+        step=1,
+        key="sweep_base_n_agents",
+    )
+    changed = False
+    editor = text
+    if int(selected_rounds) != cfg.environment.n_rounds:
+        editor = _patch_environment(editor, {"n_rounds": int(selected_rounds)})
+        changed = True
+    if int(selected_agents) != cfg.environment.n_agents:
+        editor = _patch_environment(editor, {"n_agents": int(selected_agents)})
+        changed = True
+    if changed:
+        st.session_state[BASE_EDITOR_KEY] = editor
         st.rerun()
 
 
@@ -481,6 +652,32 @@ def _render_running(state: dict[str, Any]) -> None:
 
 
 def _render_completed(state: dict[str, Any]) -> None:
+    def _run_preview(entry: dict[str, Any]) -> str:
+        run_id = str(entry.get("run_id") or "unknown")
+        run_id_preview = f"{run_id[:8]}...{run_id[-4:]}" if len(run_id) > 12 else run_id
+        cfg = entry.get("config") or {}
+        env = cfg.get("environment", {}) if isinstance(cfg, dict) else {}
+        oversight = cfg.get("oversight", {}) if isinstance(cfg, dict) else {}
+        agents_raw = cfg.get("agents", {}) if isinstance(cfg, dict) else {}
+        if isinstance(agents_raw, dict):
+            agents = agents_raw
+        elif isinstance(agents_raw, list) and agents_raw and isinstance(agents_raw[0], dict):
+            agents = agents_raw[0]
+        else:
+            agents = {}
+
+        chunks = [
+            f"run_id={run_id_preview}",
+            f"model={agents.get('model', 'unknown')}",
+            f"rounds={env.get('n_rounds', '?')}",
+            f"agents={env.get('n_agents', '?')}",
+            f"comm={cfg.get('communication_mode', 'unknown')}",
+            f"oversight={oversight.get('mode', 'unknown')}",
+        ]
+        if oversight.get("mode") == "audit-penalty" and oversight.get("audit_probability") is not None:
+            chunks.append(f"p_audit={float(oversight['audit_probability']):.2f}")
+        return " | ".join(chunks)
+
     runs = state.get("runs", [])
     n_total = len(runs)
     n_ok = sum(1 for r in runs if r.get("status") == "succeeded")
@@ -496,9 +693,8 @@ def _render_completed(state: dict[str, Any]) -> None:
     if runs:
         rows = []
         for r in runs:
-            run_id = r.get("run_id", "?")
             rows.append({
-                "run_id": run_id[:12] + "..." if len(run_id) > 12 else run_id,
+                "run": _run_preview(r),
                 "status": r.get("status", "?"),
                 "elapsed (s)": (
                     f"{r['elapsed_seconds']:.1f}"
@@ -589,6 +785,9 @@ def render_sweep_page() -> None:
     # patching can assign `BASE_EDITOR_KEY` without violating Streamlit's rule
     # against mutating a widget key after that widget instantiates this run.
     _render_base_model_picker()
+    _render_base_mode_picker()
+    _render_base_game_controls()
+    _render_base_auditor_model_picker()
     st.text_area(
         "Base Config YAML",
         height=260,

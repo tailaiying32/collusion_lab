@@ -29,6 +29,18 @@ class PricingConfig(EnvironmentConfig):
     # Use to bring raw profits into a scale proportionate to the price grid.
     profit_scale: float = 1.0
 
+    # When set, reset() returns a populated round-0 obs with this price for every
+    # agent. The runner seeds agent memory from that obs so all agents begin with a
+    # shared observed starting point before round 1.
+    forced_initial_price: int | None = None
+
+    def default_prompt_dir(self) -> str:
+        return (
+            "prompts/pricing_bertrand"
+            if self.demand_model == "bertrand"
+            else "prompts/pricing"
+        )
+
     @model_validator(mode="after")
     def _check_grid(self) -> "PricingConfig":
         if self.price_max <= self.price_min:
@@ -42,6 +54,10 @@ class PricingConfig(EnvironmentConfig):
             self.price_min <= self.monopoly_price <= self.price_max
         ):
             raise ValueError("monopoly_price out of grid range")
+        if self.forced_initial_price is not None and not (
+            self.price_min <= self.forced_initial_price <= self.price_max
+        ):
+            raise ValueError("forced_initial_price out of grid range")
         return self
 
     def _calibrate_equilibria(self) -> None:

@@ -5,13 +5,14 @@ environment:
   n_agents: 2
   n_rounds: 50
   seed: 42
-  demand_model: bertrand
+  demand_model: calvano
   price_min: 1
   price_max: 100
   demand_params:
-    c: 34.0
-    Q: 1.0
-    reservation_price: 100.0
+    a: 67.688
+    mu: 8.461
+    a_0: 0.0
+    c: 33.844
   profit_scale: 10
   forced_initial_price: 50
 agents:
@@ -19,6 +20,7 @@ agents:
   model: gpt-4o-mini
   memory_window: 10
   temperature: 0.4
+prompt_dir: prompts/pricing
 communication_mode: public
 oversight:
   mode: none

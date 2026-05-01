@@ -93,7 +93,7 @@ class ExperimentConfig(BaseModel):
     # subclass-only fields because the declared type is the base class.
     environment: SerializeAsAny[EnvironmentConfig]
     agents: AgentConfig
-    prompt_dir: str = "prompts/pricing"
+    prompt_dir: str | None = None
     # Optional extra paragraphs injected into action/message turns only (never the
     # system prompt). Leave empty for neutral experiments; use for reproducible A/B wording.
     strategic_guidance: str = ""
@@ -137,6 +137,8 @@ class ExperimentConfig(BaseModel):
                 f"env_type mismatch: top-level {self.env_type!r} vs "
                 f"environment.env_type {self.environment.env_type!r}"
             )
+        if self.prompt_dir is None:
+            self.prompt_dir = self.environment.default_prompt_dir()
         return self
 
     def with_run_id(self) -> "ExperimentConfig":

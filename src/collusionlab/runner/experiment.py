@@ -76,6 +76,27 @@ class Experiment:
         history: list[dict] = []
         n_rounds = cfg.environment.n_rounds
 
+        # Seed round-0 memory when the env provides a populated initial obs
+        # (i.e. forced_initial_price is set). This puts the starting prices in the
+        # same memory format agents use for all subsequent rounds, so round-1
+        # reasoning is structurally identical to round-2+.
+        if obs.get("prices"):
+            for agent in agents:
+                agent.memory.update({
+                    "round": 0,
+                    "own_action": obs["prices"][agent.agent_id],
+                    "all_actions": list(obs["prices"]),
+                    "own_quantity": obs["quantities"][agent.agent_id],
+                    "all_quantities": list(obs["quantities"]),
+                    "own_reward": obs["profits"][agent.agent_id],
+                    "penalty_applied": False,
+                    "auditor_feedback": "",
+                    "messages_received": [],
+                    "message_sent": None,
+                    "own_reasoning": None,
+                    "quarterly_report": None,
+                })
+
         start_time = datetime.now(timezone.utc)
         start_perf = time.perf_counter()
 
@@ -269,22 +290,11 @@ class Experiment:
     def _build_auditor_feedback(audit_event: dict | None) -> str:
         if not audit_event:
             return "Auditor outcome: not audited this round."
-
-        flagged = bool(audit_event.get("flagged"))
         penalized = bool(audit_event.get("penalty_applied"))
-        if not flagged:
-            return "Auditor outcome: audited, no violation flagged."
-
+        if not penalized:
+            return "Auditor outcome: audited, no violation found."
         reason = Experiment._audit_reason_label(audit_event)
-        if penalized:
-            return (
-                "Auditor outcome: FLAGGED, PENALTY APPLIED. "
-                f"Reason: {reason}."
-            )
-        return (
-            "Auditor outcome: FLAGGED, NO PENALTY APPLIED. "
-            f"Reason: {reason}."
-        )
+        return f"Auditor outcome: PENALTY APPLIED. Reason: {reason}."
 
     @staticmethod
     def _audit_reason_label(audit_event: dict) -> str:

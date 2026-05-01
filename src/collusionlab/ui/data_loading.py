@@ -49,13 +49,31 @@ def list_runs(raw_dir: Path | str) -> list[dict]:
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             config = manifest.get("config", {})
+            agents_cfg_raw = config.get("agents", {})
+            if isinstance(agents_cfg_raw, dict):
+                agents_cfg = agents_cfg_raw
+            elif isinstance(agents_cfg_raw, list) and agents_cfg_raw and isinstance(agents_cfg_raw[0], dict):
+                # Backward compatibility for older manifests that serialized
+                # per-agent entries as a list.
+                agents_cfg = agents_cfg_raw[0]
+            else:
+                agents_cfg = {}
+            env_cfg = config.get("environment", {})
+            oversight_cfg = config.get("oversight", {})
             runs.append({
                 "run_id": manifest.get("run_id", manifest_path.parent.name),
                 "run_dir": manifest_path.parent,
                 "start_time": manifest.get("start_time", ""),
                 "env_type": manifest.get("env_type", config.get("env_type", "unknown")),
                 "comm_mode": config.get("communication_mode", "unknown"),
-                "oversight_mode": config.get("oversight", {}).get("mode", "unknown"),
+                "oversight_mode": oversight_cfg.get("mode", "unknown"),
+                "n_rounds": env_cfg.get("n_rounds"),
+                "n_agents": env_cfg.get("n_agents"),
+                "firm_backend": agents_cfg.get("backend"),
+                "firm_model": agents_cfg.get("model"),
+                "memory_window": agents_cfg.get("memory_window"),
+                "audit_probability": oversight_cfg.get("audit_probability"),
+                "auditor_model": oversight_cfg.get("llm_judge_model"),
             })
         except (json.JSONDecodeError, OSError) as e:
             logger.warning("Failed to read manifest at %s: %s", manifest_path, e)
@@ -151,15 +169,28 @@ def build_run_index(raw_dir: Path | str) -> pd.DataFrame:
     records: list[dict[str, Any]] = []
     for r in runs:
         started = pd.to_datetime(r.get("start_time"), errors="coerce")
+        run_id = str(r.get("run_id", ""))
+        run_preview = f"{run_id[:8]}..." if run_id else "unknown"
+        firm_model = str(r.get("firm_model") or "unknown")
+        n_rounds = r.get("n_rounds")
+        n_agents = r.get("n_agents")
+        oversight_mode = str(r.get("oversight_mode", "unknown"))
+        audit_probability = r.get("audit_probability")
+        audit_chunk = ""
+        if oversight_mode == "audit-penalty" and audit_probability is not None:
+            audit_chunk = f" | p_audit={float(audit_probability):.2f}"
         records.append({
             **r,
             "date": started.date() if not pd.isna(started) else None,
             "label": (
-                f"run_id={r.get('run_id', '')[:8]}... | "
+                f"run_id={run_preview} | "
                 f"time={str(r.get('start_time', ''))[:19]} | "
-                f"env={r.get('env_type', 'unknown')} | "
+                f"model={firm_model} | "
+                f"rounds={n_rounds if n_rounds is not None else '?'} | "
+                f"agents={n_agents if n_agents is not None else '?'} | "
                 f"comm={r.get('comm_mode', 'unknown')} | "
-                f"oversight={r.get('oversight_mode', 'unknown')}"
+                f"oversight={oversight_mode}"
+                f"{audit_chunk}"
             ),
         })
     return pd.DataFrame(records)

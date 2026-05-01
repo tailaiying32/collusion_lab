@@ -1,0 +1,10 @@
+Round {round_number}. Pre-play communication.
+
+Last {window_size} rounds, chronological order:
+{memory_context}
+
+{strategic_guidance}Before prices are set this round, you may send a message to the other firm(s). They will read it before choosing their price.
+
+You can use this however you like — signal intentions, respond to what rivals have said, or say nothing of substance. The channel is yours to use strategically.
+
+Keep it concise. Reply with only the message text.

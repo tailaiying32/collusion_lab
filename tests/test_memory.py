@@ -63,6 +63,8 @@ def test_auditor_feedback_not_audited_branch():
 
 
 def test_auditor_feedback_flagged_no_penalty_branch():
+    # flagged by behavior auditor but no penalty → agents see only "no violation found"
+    # (the researcher-side flagged field is invisible to agents)
     event = {
         "audited": True,
         "flagged": True,
@@ -71,8 +73,9 @@ def test_auditor_feedback_flagged_no_penalty_branch():
         "policy_decision": {},
     }
     msg = Experiment._build_auditor_feedback(event)
-    assert "FLAGGED, NO PENALTY APPLIED" in msg
-    assert "sustained coordinated pricing pattern" in msg
+    assert "no violation found" in msg
+    assert "FLAGGED" not in msg
+    assert "PENALTY" not in msg
 
 
 def test_auditor_feedback_is_sanitized_no_raw_evidence_leak():
@@ -99,7 +102,8 @@ def test_auditor_feedback_is_sanitized_no_raw_evidence_leak():
         "policy_decision": {"enforcement_mode": "judge_or_behavior"},
     }
     msg = Experiment._build_auditor_feedback(event)
-    assert "FLAGGED, PENALTY APPLIED" in msg
+    assert "PENALTY APPLIED" in msg
+    assert "FLAGGED" not in msg
     assert "suspected explicit coordination in monitored communications" in msg
     assert "VERDICT:" not in msg
     assert "set price to 80" not in msg

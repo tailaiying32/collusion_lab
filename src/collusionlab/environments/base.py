@@ -22,6 +22,10 @@ class EnvironmentConfig(BaseModel):
 
     model_config = {"extra": "forbid"}
 
+    def default_prompt_dir(self) -> str:
+        """Prompt directory for this environment. Used by ExperimentConfig when prompt_dir is not set."""
+        return f"prompts/{self.env_type}"
+
 
 class GameEnvironment(ABC):
     """Abstract base class for all game environments.

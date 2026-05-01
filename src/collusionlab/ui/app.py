@@ -122,6 +122,37 @@ def _binomial_ci(rate: float, n: int, z: float = 1.96) -> tuple[float, float]:
     return (max(0.0, rate - z * se), min(1.0, rate + z * se))
 
 
+def _run_id_preview(run_id: str | None, n: int = 8) -> str:
+    rid = str(run_id or "")
+    return f"{rid[:n]}..." if rid else "unknown"
+
+
+def _config_preview(config: dict) -> str:
+    env = config.get("environment", {}) or {}
+    agents = config.get("agents", {}) or {}
+    oversight = config.get("oversight", {}) or {}
+    comm = config.get("communication_mode", "unknown")
+    oversight_mode = oversight.get("mode", "unknown")
+    chunks = [
+        f"model={agents.get('model', 'unknown')}",
+        f"rounds={env.get('n_rounds', '?')}",
+        f"agents={env.get('n_agents', '?')}",
+        f"comm={comm}",
+        f"oversight={oversight_mode}",
+    ]
+    if oversight_mode == "audit-penalty":
+        p_audit = oversight.get("audit_probability")
+        if p_audit is not None:
+            chunks.append(f"p_audit={float(p_audit):.2f}")
+        if oversight.get("llm_judge_enabled"):
+            chunks.append(f"auditor={oversight.get('llm_judge_model', 'unknown')}")
+    return " | ".join(chunks)
+
+
+def _run_preview_label(run) -> str:
+    return f"run_id={_run_id_preview(run.run_id)} | {_config_preview(run.config)}"
+
+
 def _plotly_image_bytes(fig: go.Figure, fmt: str) -> bytes | None:
     try:
         return fig.to_image(format=fmt)
@@ -200,10 +231,7 @@ def render_side_by_side(runs, run_paths: dict) -> None:
 
     run_labels: dict[str, str] = {}
     for r in runs:
-        label = (
-            f"{r.run_id[:8]} | comm={r.communication_mode} "
-            f"| n={r.n_agents} | oversight={r.oversight_mode}"
-        )
+        label = f"{_run_preview_label(r)} ({str(r.run_id)[-4:]})"
         run_labels[label] = r.run_id
 
     selected_labels = st.multiselect(
@@ -597,9 +625,25 @@ def render_run_browser(sweep_df: pd.DataFrame, run_paths: dict[str, Path] | None
     )
     selectable = [rid for rid in df["run_id"].tolist() if rid in run_paths]
     if selectable:
-        selected_run = st.selectbox("Open run in Analyze", selectable)
+        open_options: list[tuple[str, str]] = []
+        for run_id in selectable:
+            run_dir = run_paths.get(run_id)
+            if not run_dir:
+                continue
+            manifest = load_manifest(run_dir)
+            cfg = manifest.get("config", {}) if manifest else {}
+            label = (
+                f"run_id={_run_id_preview(run_id)} ({str(run_id)[-4:]}) | "
+                f"{_config_preview(cfg)}"
+            )
+            open_options.append((label, run_id))
+        if not open_options:
+            st.caption("Run jump is unavailable because run manifests could not be loaded.")
+            return
+        selected_label = st.selectbox("Open run in Analyze", [x[0] for x in open_options])
+        selected_run_id = dict(open_options)[selected_label]
         if st.button("Open selected run"):
-            st.session_state["_selected_run_id"] = selected_run
+            st.session_state["_selected_run_id"] = selected_run_id
             st.session_state["_nav_target"] = "Analyze"
             st.rerun()
     else:

@@ -46,6 +46,8 @@ MODEL_TO_BACKEND: dict[str, str] = {
     for backend, models in BACKEND_MODELS.items()
     for model in models
 }
+_COMM_OPTIONS = ["none", "public", "private"]
+_AUDIT_OPTIONS = ["none", "audit-penalty"]
 
 
 # ---------------------------------------------------------------------------
@@ -223,6 +225,116 @@ def _patch_auditor_models(text: str, updates: dict[str, str]) -> str:
     return yaml.safe_dump(data, sort_keys=False)
 
 
+def _patch_top_level(text: str, key: str, value: str) -> str:
+    try:
+        data = yaml.safe_load(text) or {}
+    except yaml.YAMLError:
+        return text
+    if not isinstance(data, dict):
+        return text
+    data[key] = value
+    return yaml.safe_dump(data, sort_keys=False)
+
+
+def _patch_oversight_mode(text: str, mode: str) -> str:
+    try:
+        data = yaml.safe_load(text) or {}
+    except yaml.YAMLError:
+        return text
+    if not isinstance(data, dict):
+        return text
+    oversight = data.get("oversight")
+    if not isinstance(oversight, dict):
+        oversight = {}
+    oversight["mode"] = mode
+    data["oversight"] = oversight
+    return yaml.safe_dump(data, sort_keys=False)
+
+
+def _patch_environment(text: str, updates: dict) -> str:
+    try:
+        data = yaml.safe_load(text) or {}
+    except yaml.YAMLError:
+        return text
+    if not isinstance(data, dict):
+        return text
+    env = data.get("environment")
+    if not isinstance(env, dict):
+        return text
+    env.update(updates)
+    data["environment"] = env
+    return yaml.safe_dump(data, sort_keys=False)
+
+
+def _render_mode_controls(cfg: ExperimentConfig | None) -> None:
+    if cfg is None:
+        return
+    c1, c2 = st.columns(2)
+    selected_comm = c1.selectbox(
+        "Communication mode",
+        options=_COMM_OPTIONS,
+        index=_COMM_OPTIONS.index(cfg.communication_mode),
+    )
+    selected_audit = c2.selectbox(
+        "Audit mode",
+        options=_AUDIT_OPTIONS,
+        index=_AUDIT_OPTIONS.index(cfg.oversight.mode),
+    )
+    changed = False
+    editor = st.session_state.get(EDITOR_KEY, "")
+    if selected_comm != cfg.communication_mode:
+        editor = _patch_top_level(editor, "communication_mode", selected_comm)
+        changed = True
+    if selected_audit != cfg.oversight.mode:
+        editor = _patch_oversight_mode(editor, selected_audit)
+        changed = True
+    if cfg.oversight.mode == "audit-penalty":
+        audit_prob = st.slider(
+            "Audit probability",
+            min_value=0.0,
+            max_value=1.0,
+            value=float(cfg.oversight.audit_probability),
+            step=0.05,
+        )
+        if audit_prob != cfg.oversight.audit_probability:
+            editor = _patch_auditor_models(editor, {"audit_probability": audit_prob})
+            changed = True
+    if changed:
+        st.session_state[EDITOR_KEY] = editor
+        st.rerun()
+
+
+def _render_game_controls(cfg: ExperimentConfig | None) -> None:
+    if cfg is None:
+        return
+    c1, c2 = st.columns(2)
+    selected_rounds = c1.number_input(
+        "Rounds",
+        min_value=1,
+        max_value=1000,
+        value=cfg.environment.n_rounds,
+        step=1,
+    )
+    selected_agents = c2.number_input(
+        "Agents",
+        min_value=2,
+        max_value=10,
+        value=cfg.environment.n_agents,
+        step=1,
+    )
+    changed = False
+    editor = st.session_state.get(EDITOR_KEY, "")
+    if int(selected_rounds) != cfg.environment.n_rounds:
+        editor = _patch_environment(editor, {"n_rounds": int(selected_rounds)})
+        changed = True
+    if int(selected_agents) != cfg.environment.n_agents:
+        editor = _patch_environment(editor, {"n_agents": int(selected_agents)})
+        changed = True
+    if changed:
+        st.session_state[EDITOR_KEY] = editor
+        st.rerun()
+
+
 def _render_model_controls(cfg: ExperimentConfig | None) -> None:
     if cfg is None:
         return
@@ -245,36 +357,18 @@ def _render_model_controls(cfg: ExperimentConfig | None) -> None:
     oversight = cfg.oversight
     if oversight.mode != "audit-penalty" or not oversight.llm_judge_enabled:
         return
-    backends = sorted(BACKEND_MODELS.keys())
-    judge_backend = oversight.llm_judge_backend
-    if judge_backend not in backends:
-        backends.append(judge_backend)
-    judge_models = list(BACKEND_MODELS.get(judge_backend, []))
-    if oversight.llm_judge_model not in judge_models:
-        judge_models = [oversight.llm_judge_model] + judge_models
-    c3, c4 = st.columns(2)
-    selected_judge_backend = c3.selectbox(
-        "Auditor backend",
-        options=backends,
-        index=backends.index(judge_backend),
-    )
-    selected_judge_model_options = list(BACKEND_MODELS.get(selected_judge_backend, []))
-    if not selected_judge_model_options:
-        selected_judge_model_options = [oversight.llm_judge_model]
-    if oversight.llm_judge_model not in selected_judge_model_options:
-        selected_judge_model_options = [oversight.llm_judge_model] + selected_judge_model_options
-    selected_judge_model = c4.selectbox(
+    judge_model_options = list(MODEL_TO_BACKEND.keys())
+    if oversight.llm_judge_model not in judge_model_options:
+        judge_model_options = [oversight.llm_judge_model] + judge_model_options
+    selected_judge_model = st.selectbox(
         "Auditor model",
-        options=selected_judge_model_options,
-        index=(
-            selected_judge_model_options.index(oversight.llm_judge_model)
-            if oversight.llm_judge_model in selected_judge_model_options
-            else 0
-        ),
+        options=judge_model_options,
+        index=judge_model_options.index(oversight.llm_judge_model),
     )
+    selected_judge_backend = MODEL_TO_BACKEND.get(selected_judge_model, oversight.llm_judge_backend)
     if (
-        selected_judge_backend != judge_backend
-        or selected_judge_model != oversight.llm_judge_model
+        selected_judge_model != oversight.llm_judge_model
+        or selected_judge_backend != oversight.llm_judge_backend
     ):
         st.session_state[EDITOR_KEY] = _patch_auditor_models(
             st.session_state.get(EDITOR_KEY, ""),
@@ -513,6 +607,11 @@ def render_run_page() -> None:
 
         @st.fragment(run_every=1)
         def _live_fragment() -> None:
+            # Fragment reruns do not re-evaluate the outer page branch. Once the
+            # worker marks the run complete, force a full rerun so the completed
+            # banner renders immediately (without requiring tab navigation).
+            if not state.get("running", False):
+                st.rerun()
             _render_live_view(state, env_cfg, is_running=True)
 
         _live_fragment()
@@ -557,6 +656,8 @@ def render_run_page() -> None:
     # after that widget instantiates in the same run).
     cfg, err = _validate_yaml(st.session_state.get(EDITOR_KEY, ""))
     _render_model_controls(cfg)
+    _render_mode_controls(cfg)
+    _render_game_controls(cfg)
     _render_editor()
     cfg, err = _validate_yaml(st.session_state.get(EDITOR_KEY, ""))
 

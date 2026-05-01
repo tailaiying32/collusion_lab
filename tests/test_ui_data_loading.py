@@ -300,7 +300,8 @@ def test_build_run_index_adds_label_and_date(tmp_path, sample_manifest):
     df = build_run_index(tmp_path)
     assert len(df) == 1
     assert "label" in df.columns
-    assert "env=pricing" in df.loc[0, "label"]
+    assert "rounds=5" in df.loc[0, "label"]
+    assert "oversight=audit-penalty" in df.loc[0, "label"]
     assert df.loc[0, "date"] is not None
 
 

@@ -56,6 +56,22 @@ class PricingGame(GameEnvironment):
         self._round = 0
         self._cumulative_profits = [0.0] * self.n_agents
         self._done = False
+
+        fip = self.config.forced_initial_price
+        if fip is not None:
+            quantities = self.demand.quantities([float(fip)] * self.n_agents)
+            profits = [
+                (fip - self.demand.marginal_cost) * quantities[i] * self.config.profit_scale
+                for i in range(self.n_agents)
+            ]
+            return {
+                "round": 0,
+                "prices": [fip] * self.n_agents,
+                "quantities": list(quantities),
+                "profits": list(profits),
+                "cumulative_profits": [0.0] * self.n_agents,
+            }
+
         return {
             "round": 0,
             "prices": [],
