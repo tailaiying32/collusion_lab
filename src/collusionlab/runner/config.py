@@ -77,6 +77,7 @@ class OversightConfig(BaseModel):
     mode: Literal["none", "audit-penalty"] = "none"
     enforcement_policy: Literal["fused", "transcript_only"] = "fused"
     include_auditor_notice: bool = True
+    auditor_feedback: Literal["summary", "judge_reasoning", "full"] = "summary"
     audit_probability: float = 0.25
     penalty_factor: float = 1.0
 

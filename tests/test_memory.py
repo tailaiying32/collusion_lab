@@ -108,3 +108,58 @@ def test_auditor_feedback_is_sanitized_no_raw_evidence_leak():
     assert "suspected explicit coordination in monitored communications" in msg
     assert "VERDICT:" not in msg
     assert "set price to 80" not in msg
+
+
+def test_auditor_feedback_judge_reasoning_includes_evidence_and_reason():
+    event = {
+        "audited": True,
+        "flagged": True,
+        "penalty_applied": True,
+        "results": [
+            {
+                "auditor": "llm_judge",
+                "flagged": True,
+                "details": {
+                    "evidence": "Let's both hold at 75",
+                    "reasoning": "This asks rivals to maintain a shared price target",
+                    "raw_response": "VERDICT: YES",
+                },
+            },
+        ],
+        "policy_decision": {"enforcement_mode": "judge_only"},
+    }
+    msg = Experiment._build_auditor_feedback(event, feedback_mode="judge_reasoning")
+    assert "PENALTY APPLIED" in msg
+    assert 'Judge evidence: "Let\'s both hold at 75".' in msg
+    assert "Judge reasoning: This asks rivals to maintain a shared price target." in msg
+    assert "VERDICT:" not in msg
+
+
+def test_auditor_feedback_full_includes_policy_and_judge_reasoning():
+    event = {
+        "audited": True,
+        "flagged": True,
+        "penalty_applied": True,
+        "results": [
+            {
+                "auditor": "llm_judge",
+                "flagged": True,
+                "details": {
+                    "evidence": "match 75",
+                    "reasoning": "asks a rival to match a price",
+                    "raw_response": "VERDICT: YES",
+                },
+            },
+        ],
+        "policy_decision": {
+            "enforcement_mode": "judge_only",
+            "flagged": True,
+            "raw_response": "hidden",
+        },
+    }
+    msg = Experiment._build_auditor_feedback(event, feedback_mode="full")
+    assert "Policy decision:" in msg
+    assert "judge_only" in msg
+    assert 'Judge evidence: "match 75".' in msg
+    assert "raw_response" not in msg
+    assert "VERDICT:" not in msg

@@ -71,8 +71,14 @@ class TestPublicCommunication:
             {"from": 0, "to": "all", "content": "hello"},
             {"from": 1, "to": "all", "content": "world"},
         ]
-        assert handler.deliver_messages(0, all_msgs) == ["hello", "world"]
-        assert handler.deliver_messages(1, all_msgs) == ["hello", "world"]
+        assert handler.deliver_messages(0, all_msgs) == [
+            "You said: hello",
+            "Agent 1 said: world",
+        ]
+        assert handler.deliver_messages(1, all_msgs) == [
+            "Agent 0 said: hello",
+            "You said: world",
+        ]
 
     def test_collect_skips_none_messages(self):
         handler = PublicCommunication()
@@ -99,8 +105,8 @@ class TestPrivateCommunication:
             {"from": 0, "to": 1, "content": "hello"},
             {"from": 1, "to": 0, "content": "world"},
         ]
-        assert handler.deliver_messages(0, all_msgs) == ["world"]
-        assert handler.deliver_messages(1, all_msgs) == ["hello"]
+        assert handler.deliver_messages(0, all_msgs) == ["Agent 1 said: world"]
+        assert handler.deliver_messages(1, all_msgs) == ["Agent 0 said: hello"]
 
     def test_deliver_three_agents_isolation(self):
         """With 3 agents, each agent sees only messages addressed to itself."""
@@ -115,11 +121,11 @@ class TestPrivateCommunication:
         delivered_2 = handler.deliver_messages(2, msgs)
 
         # Agent 0 should receive from 1 and 2
-        assert set(delivered_0) == {"from-1", "from-2"}
+        assert set(delivered_0) == {"Agent 1 said: from-1", "Agent 2 said: from-2"}
         # Agent 1 should receive from 0 and 2
-        assert set(delivered_1) == {"from-0", "from-2"}
+        assert set(delivered_1) == {"Agent 0 said: from-0", "Agent 2 said: from-2"}
         # Agent 2 should receive from 0 and 1
-        assert set(delivered_2) == {"from-0", "from-1"}
+        assert set(delivered_2) == {"Agent 0 said: from-0", "Agent 1 said: from-1"}
 
     def test_collect_skips_none_messages(self):
         handler = PrivateCommunication()

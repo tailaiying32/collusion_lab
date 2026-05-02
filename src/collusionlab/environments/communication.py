@@ -61,7 +61,7 @@ class PublicCommunication(CommunicationHandler):
         return messages
 
     def deliver_messages(self, agent_id: int, all_messages: list[dict]) -> list[str]:
-        return [m["content"] for m in all_messages]
+        return [_format_delivered_message(agent_id, m) for m in all_messages]
 
 
 class PrivateCommunication(CommunicationHandler):
@@ -89,7 +89,7 @@ class PrivateCommunication(CommunicationHandler):
 
     def deliver_messages(self, agent_id: int, all_messages: list[dict]) -> list[str]:
         return [
-            m["content"]
+            _format_delivered_message(agent_id, m)
             for m in all_messages
             if m["to"] == agent_id or m["to"] == "all"
         ]
@@ -122,3 +122,11 @@ def get_comm_handler(mode: str) -> CommunicationHandler:
 
 def registered_comm_modes() -> list[str]:
     return sorted(_REGISTRY)
+
+
+def _format_delivered_message(agent_id: int, message: dict) -> str:
+    content = message.get("content", "")
+    sender = message.get("from")
+    if sender == agent_id:
+        return f"You said: {content}"
+    return f"Agent {sender} said: {content}"

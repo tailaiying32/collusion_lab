@@ -27,6 +27,7 @@ communication_mode: public
 oversight:
   mode: audit-penalty
   include_auditor_notice: true
+  auditor_feedback: judge_reasoning
   audit_probability: 1.0
   penalty_factor: 0.0
   llm_judge_enabled: true
