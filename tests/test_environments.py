@@ -40,12 +40,9 @@ def test_calvano_published_equilibria_match_paper():
 
 def test_calvano_config_auto_calibrates_equilibria():
     """PricingConfig auto-computes nash_price and monopoly_price from the demand model."""
-    import yaml
     from collusionlab.environments.pricing.config import PricingConfig
 
-    with (ROOT / "configs" / "base_calvano.yaml").open() as f:
-        raw = yaml.safe_load(f)
-    env_raw = {k: v for k, v in raw["environment"].items() if not k.startswith("_")}
+    env_raw = _calvano_env_block()
     cfg = PricingConfig(**env_raw)
 
     params = env_raw["demand_params"]
@@ -116,14 +113,14 @@ def test_demand_model_interface_satisfied():
 
 
 def test_linear_differentiated_default_equilibria_are_closed_form():
-    d = LinearDifferentiatedDemand(n_agents=2, a=100.0, b=3.0, d=2.0, c=60.0)
-    assert d.nash_price() == pytest.approx(70.0)
-    assert d.monopoly_price() == pytest.approx(80.0)
-    assert d.quantities([70.0, 70.0]) == pytest.approx([30.0, 30.0])
+    d = LinearDifferentiatedDemand(n_agents=2)
+    assert d.nash_price() == pytest.approx(60.0)
+    assert d.monopoly_price() == pytest.approx(90.0)
+    assert d.quantities([60.0, 60.0]) == pytest.approx([90.0, 90.0])
 
 
 def test_linear_differentiated_nash_is_strict_best_response():
-    d = LinearDifferentiatedDemand(n_agents=2, a=100.0, b=3.0, d=2.0, c=60.0)
+    d = LinearDifferentiatedDemand(n_agents=2)
     nash = d.nash_price()
 
     def profit(p_own: float) -> float:
@@ -135,7 +132,7 @@ def test_linear_differentiated_nash_is_strict_best_response():
 
 
 def test_linear_differentiated_monopoly_profit_exceeds_nash_profit():
-    d = LinearDifferentiatedDemand(n_agents=2, a=100.0, b=3.0, d=2.0, c=60.0)
+    d = LinearDifferentiatedDemand(n_agents=2)
 
     def symmetric_profit(p: float) -> float:
         q = d.quantities([p, p])[0]
@@ -151,13 +148,13 @@ def test_linear_differentiated_config_auto_calibrates_equilibria():
         n_rounds=5,
         seed=0,
         demand_model="linear_differentiated",
-        demand_params={"a": 100.0, "b": 3.0, "d": 2.0, "c": 60.0},
+        demand_params={"a": 150.0, "b": 3.0, "d": 2.0, "c": 30.0},
         price_min=1,
         price_max=100,
-        forced_initial_price=70,
+        forced_initial_price=60,
     )
-    assert cfg.nash_price == 70
-    assert cfg.monopoly_price == 80
+    assert cfg.nash_price == 60
+    assert cfg.monopoly_price == 90
 
 
 def test_bertrand_winner_takes_all():
@@ -204,13 +201,29 @@ def test_bertrand_config_projects_equilibria_to_grid_with_ceil_and_floor():
 
 
 def _calibrated_config(**overrides) -> PricingConfig:
-    import yaml
-
-    with (ROOT / "configs" / "base_calvano.yaml").open() as f:
-        env_cfg = yaml.safe_load(f)["environment"]
-    env_cfg.pop("_calibration_note", None)
+    env_cfg = _calvano_env_block()
     env_cfg.update(overrides)
     return PricingConfig(**env_cfg)
+
+
+def _calvano_env_block() -> dict:
+    return {
+        "env_type": "pricing",
+        "n_agents": 2,
+        "n_rounds": 50,
+        "seed": 42,
+        "demand_model": "calvano",
+        "price_min": 1,
+        "price_max": 100,
+        "demand_params": {
+            "a": 67.688,
+            "mu": 8.461,
+            "a_0": 0.0,
+            "c": 33.844,
+        },
+        "profit_scale": 10,
+        "forced_initial_price": 50,
+    }
 
 
 def test_pricing_game_step_at_nash_gives_expected_profits():

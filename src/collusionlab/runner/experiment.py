@@ -122,24 +122,27 @@ class Experiment:
 
         start_time = datetime.now(timezone.utc)
         start_perf = time.perf_counter()
+        running_manifest = {
+            "run_id": cfg.run_id,
+            "env_type": cfg.env_type,
+            "config": cfg.to_yaml_dict(),
+            "log_path": str(log_path),
+            "start_time": start_time.isoformat(),
+            "end_time": None,
+            "elapsed_seconds": None,
+            "agents": [],
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "total_cost_estimate_usd": 0.0,
+            "total_fallback_events": 0,
+            "status": "running",
+        }
+        manifest_path.write_text(
+            json.dumps(running_manifest, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
         if run_store is not None:
-            run_store.save_manifest(
-                {
-                    "run_id": cfg.run_id,
-                    "env_type": cfg.env_type,
-                    "config": cfg.to_yaml_dict(),
-                    "log_path": str(log_path),
-                    "start_time": start_time.isoformat(),
-                    "end_time": None,
-                    "elapsed_seconds": None,
-                    "agents": [],
-                    "total_input_tokens": 0,
-                    "total_output_tokens": 0,
-                    "total_cost_estimate_usd": 0.0,
-                    "total_fallback_events": 0,
-                },
-                status="running",
-            )
+            run_store.save_manifest(running_manifest, status="running")
 
         with log_path.open("w", encoding="utf-8") as log_f:
             for round_idx in range(1, n_rounds + 1):
@@ -245,6 +248,7 @@ class Experiment:
                     "reasoning": list(reasoning),
                 }
                 log_f.write(json.dumps(line, sort_keys=True) + "\n")
+                log_f.flush()
                 if run_store is not None:
                     run_store.append_round(line)
                 history.append(line)
@@ -304,7 +308,7 @@ class Experiment:
                 and cfg.oversight.include_auditor_notice
                 else ""
             )
-            sg = (cfg.strategic_guidance or "").strip()
+            sg = cfg.resolved_strategic_guidance()
             # Templates glue {strategic_guidance} immediately before the next sentence;
             # add a paragraph break only when non-empty.
             strategic_guidance = (sg + "\n\n") if sg else ""

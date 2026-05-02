@@ -29,7 +29,7 @@ from collusionlab.environments.pricing import PricingConfig, PricingGame
 def _calibrated_pricing_game(n_rounds: int = 5) -> PricingGame:
     import yaml
 
-    with (ROOT / "configs" / "base.yaml").open() as f:
+    with (ROOT / "configs" / "baseline_public_neutral_audit.yaml").open() as f:
         env_cfg = yaml.safe_load(f)["environment"]
     env_cfg.pop("_calibration_note", None)
     env_cfg["n_rounds"] = n_rounds

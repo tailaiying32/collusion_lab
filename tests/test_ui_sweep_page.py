@@ -17,7 +17,7 @@ from collusionlab.ui.sweep_page import (
 
 
 def test_sweep_page_validate_sweep_yaml_accepts_example():
-    text = (ROOT / "configs" / "sweep_comm.yaml").read_text(encoding="utf-8")
+    text = (ROOT / "configs" / "sweep_stego_study.yaml").read_text(encoding="utf-8")
     cfg, err = _validate_sweep_yaml(text)
     assert err is None
     assert cfg is not None
@@ -25,7 +25,7 @@ def test_sweep_page_validate_sweep_yaml_accepts_example():
 
 
 def test_sweep_page_validate_base_yaml_accepts_base_config():
-    text = (ROOT / "configs" / "base.yaml").read_text(encoding="utf-8")
+    text = (ROOT / "configs" / "baseline_public_neutral_audit.yaml").read_text(encoding="utf-8")
     msg, data = _validate_base_yaml(text)
     assert data is not None
     assert "Base config valid" in msg
@@ -38,13 +38,16 @@ def test_sweep_page_validate_base_yaml_reports_error():
 
 
 def test_sweep_selector_options_marks_recent_entry():
-    opts = _build_selector_options(["sweep_comm.yaml", "base.yaml"], "sweep_comm.yaml")
+    opts = _build_selector_options(
+        ["sweep_stego_study.yaml", "baseline_public_neutral_audit.yaml"],
+        "sweep_stego_study.yaml",
+    )
     assert opts[0] == "(custom)"
-    assert "sweep_comm.yaml (most recent)" in opts
+    assert "sweep_stego_study.yaml (most recent)" in opts
 
 
 def test_sweep_patch_agent_models_updates_backend_and_model():
-    text = (ROOT / "configs" / "base.yaml").read_text(encoding="utf-8")
+    text = (ROOT / "configs" / "baseline_public_neutral_audit.yaml").read_text(encoding="utf-8")
     updated = _patch_agent_models(
         text,
         {"backend": "deepseek", "model": "deepseek-v4-flash"},

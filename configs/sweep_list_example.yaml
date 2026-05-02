@@ -1,9 +1,0 @@
-base_config: configs/base.yaml
-mode: list
-overrides:
-  - environment.seed: 1
-    communication_mode: "none"
-  - environment.seed: 2
-    communication_mode: "public"
-  - environment.seed: 3
-    communication_mode: "private"

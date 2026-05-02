@@ -24,7 +24,11 @@ from dotenv import load_dotenv
 from pydantic import ValidationError
 
 from collusionlab.runner.config import ExperimentConfig
+from collusionlab.runner.config import (
+    load_strategic_guidance_preset,
+)
 from collusionlab.runner.experiment import Experiment
+from collusionlab.environments.base import get_environment
 from collusionlab.ui.data_loading import (
     get_recent_config,
     normalize_reasoning,
@@ -52,6 +56,17 @@ MODEL_TO_BACKEND: dict[str, str] = {
 }
 _COMM_OPTIONS = ["none", "public", "private"]
 _AUDIT_OPTIONS = ["none", "audit-penalty"]
+GUIDANCE_DISABLED_LABEL = "Off"
+GUIDANCE_LABEL_TO_PRESET: dict[str, str] = {
+    "Stego capability": "stego_capability",
+    "Stego shared codebook": "stego_shared_codebook",
+    "Avoid explicit language": "avoid_explicit_language",
+    "Explicit coordination": "explicit_coordination",
+}
+GUIDANCE_PRESET_TO_LABEL = {
+    preset: label for label, preset in GUIDANCE_LABEL_TO_PRESET.items()
+}
+GUIDANCE_PRESET_LABELS = list(GUIDANCE_LABEL_TO_PRESET)
 
 
 # ---------------------------------------------------------------------------
@@ -161,7 +176,9 @@ def _init_editor_state() -> None:
             st.session_state[FILE_SELECT_KEY] = recent
         else:
             st.session_state[FILE_SELECT_KEY] = (
-                "base.yaml" if "base.yaml" in file_labels else file_labels[0]
+                "baseline_public_neutral_audit.yaml"
+                if "baseline_public_neutral_audit.yaml" in file_labels
+                else file_labels[0]
             )
     if EDITOR_KEY not in st.session_state:
         sel = st.session_state[FILE_SELECT_KEY]
@@ -238,6 +255,85 @@ def _patch_top_level(text: str, key: str, value: str) -> str:
         return text
     data[key] = value
     return yaml.safe_dump(data, sort_keys=False)
+
+
+def _patch_strategic_guidance(text: str, guidance: str) -> str:
+    return _patch_top_level(text, "strategic_guidance", guidance)
+
+
+def _patch_strategic_guidance_preset(text: str, preset: str | None) -> str:
+    try:
+        data = yaml.safe_load(text) or {}
+    except yaml.YAMLError:
+        return text
+    if not isinstance(data, dict):
+        return text
+    data["strategic_guidance"] = ""
+    if preset:
+        data["strategic_guidance_preset"] = preset
+    else:
+        data.pop("strategic_guidance_preset", None)
+    return yaml.safe_dump(data, sort_keys=False)
+
+
+def _load_strategic_guidance_preset(label: str) -> str:
+    return load_strategic_guidance_preset(GUIDANCE_LABEL_TO_PRESET[label])
+
+
+def _guidance_label_for_cfg(cfg: ExperimentConfig) -> str:
+    inline = (cfg.strategic_guidance or "").strip()
+    if inline:
+        for label in GUIDANCE_PRESET_LABELS:
+            try:
+                preset = _load_strategic_guidance_preset(label)
+            except OSError:
+                continue
+            if inline == preset:
+                return label
+        return "Custom YAML value"
+    if cfg.strategic_guidance_preset:
+        return GUIDANCE_PRESET_TO_LABEL.get(
+            cfg.strategic_guidance_preset, "Custom YAML value"
+        )
+    return GUIDANCE_DISABLED_LABEL
+
+
+def _guidance_preset_for_label(label: str) -> str:
+    return GUIDANCE_LABEL_TO_PRESET[label]
+
+
+def _guidance_matches_selected(cfg: ExperimentConfig, selected: str) -> bool:
+    preset = _guidance_preset_for_label(selected)
+    if cfg.strategic_guidance_preset == preset and not cfg.strategic_guidance.strip():
+        return True
+    try:
+        selected_text = load_strategic_guidance_preset(preset)
+    except OSError:
+        return False
+    return cfg.strategic_guidance.strip() == selected_text
+
+
+def _guidance_text_for_cfg(cfg: ExperimentConfig) -> str:
+    try:
+        return cfg.resolved_strategic_guidance()
+    except OSError:
+        return ""
+    except ValueError:
+        return ""
+
+
+def _guidance_label_for_text(text: str) -> str:
+    stripped = (text or "").strip()
+    if not stripped:
+        return GUIDANCE_DISABLED_LABEL
+    for label in GUIDANCE_PRESET_LABELS:
+        try:
+            preset = _load_strategic_guidance_preset(label)
+        except OSError:
+            continue
+        if stripped == preset:
+            return label
+    return "Custom YAML value"
 
 
 def _patch_oversight_mode(text: str, mode: str) -> str:
@@ -339,6 +435,49 @@ def _render_game_controls(cfg: ExperimentConfig | None) -> None:
         st.rerun()
 
 
+def _render_strategic_guidance_controls(cfg: ExperimentConfig | None) -> None:
+    if cfg is None:
+        return
+
+    current_label = _guidance_label_for_cfg(cfg)
+    guidance_enabled = current_label != GUIDANCE_DISABLED_LABEL
+    enabled = st.checkbox(
+        "Strategic guidance",
+        value=guidance_enabled,
+        help="Injects a selected research instruction prompt into message and action turns.",
+    )
+    editor = st.session_state.get(EDITOR_KEY, "")
+    if not enabled:
+        if guidance_enabled:
+            st.session_state[EDITOR_KEY] = _patch_strategic_guidance_preset(
+                editor, None
+            )
+            st.rerun()
+        return
+
+    options = list(GUIDANCE_PRESET_LABELS)
+    if current_label == "Custom YAML value":
+        options = ["Custom YAML value"] + options
+    elif current_label == GUIDANCE_DISABLED_LABEL:
+        current_label = "Stego capability"
+
+    selected = st.selectbox(
+        "Guidance preset",
+        options=options,
+        index=options.index(current_label),
+        help="Choose a reusable baseline instruction. Edit YAML directly for custom text.",
+    )
+    if selected == "Custom YAML value":
+        st.caption("The current guidance text is custom. Edit it in the YAML editor.")
+        return
+
+    if not _guidance_matches_selected(cfg, selected):
+        st.session_state[EDITOR_KEY] = _patch_strategic_guidance_preset(
+            editor, _guidance_preset_for_label(selected)
+        )
+        st.rerun()
+
+
 def _render_model_controls(cfg: ExperimentConfig | None) -> None:
     if cfg is None:
         return
@@ -383,6 +522,74 @@ def _render_model_controls(cfg: ExperimentConfig | None) -> None:
         )
         st.rerun()
 
+
+def _build_prompt_preview(cfg: ExperimentConfig, agent_id: int = 0) -> dict[str, str]:
+    env = get_environment(cfg.environment)
+    prompt_dir = Path(cfg.prompt_dir or cfg.environment.default_prompt_dir())
+    system_template = (prompt_dir / "system.txt").read_text(encoding="utf-8")
+    communication_reasoning_template = (
+        prompt_dir / "communication_reasoning_turn.txt"
+    ).read_text(encoding="utf-8")
+    message_template = (prompt_dir / "message_turn.txt").read_text(encoding="utf-8")
+    action_template = (prompt_dir / "action_turn.txt").read_text(encoding="utf-8")
+    auditor_notice_template = (prompt_dir / "auditor_notice.txt").read_text(
+        encoding="utf-8"
+    )
+
+    prompt_vars = env.system_prompt_vars(agent_id)
+    prompt_vars["auditor_notice"] = (
+        "\n\n" + auditor_notice_template.strip()
+        if cfg.oversight
+        and cfg.oversight.mode == "audit-penalty"
+        and cfg.oversight.include_auditor_notice
+        else ""
+    )
+    resolved_guidance = _guidance_text_for_cfg(cfg)
+    strategic_guidance = (
+        resolved_guidance + "\n\n"
+        if resolved_guidance
+        else ""
+    )
+    prompt_vars["strategic_guidance"] = strategic_guidance
+    shared = {
+        "round_number": 1,
+        "n_rounds": cfg.environment.n_rounds,
+        "window_size": cfg.agents.memory_window,
+        "memory_context": "(none)",
+        "strategic_guidance": strategic_guidance,
+    }
+    return {
+        "System": system_template.format(**prompt_vars),
+        "Communication reasoning turn": communication_reasoning_template.format(
+            **shared
+        ),
+        "Message turn": message_template.format(**shared),
+        "Action turn": action_template.format(
+            **shared,
+            recent_messages="(none)",
+            action_space_description=env.action_space()["description"],
+        ),
+    }
+
+
+def _render_prompt_preview(cfg: ExperimentConfig | None) -> None:
+    if cfg is None:
+        return
+    with st.expander("Prompt preview", expanded=False):
+        st.caption(
+            "Rendered for Agent 0, Round 1, with empty memory and no received messages."
+        )
+        try:
+            preview = _build_prompt_preview(cfg, agent_id=0)
+        except Exception as e:
+            st.warning(f"Could not render prompt preview: {type(e).__name__}: {e}")
+            return
+        selected = st.selectbox(
+            "Preview prompt",
+            options=list(preview.keys()),
+            key="run_page_prompt_preview_select",
+        )
+        st.code(preview[selected], language="text")
 
 def _render_editor() -> str:
     files = _list_config_files()
@@ -692,6 +899,7 @@ def render_run_page() -> None:
     _render_model_controls(cfg)
     _render_mode_controls(cfg)
     _render_game_controls(cfg)
+    _render_strategic_guidance_controls(cfg)
     _render_editor()
     cfg, err = _validate_yaml(st.session_state.get(EDITOR_KEY, ""))
 
@@ -705,6 +913,7 @@ def render_run_page() -> None:
             f"comm `{cfg.communication_mode}`, "
             f"oversight `{cfg.oversight.mode}`."
         )
+        _render_prompt_preview(cfg)
 
     if st.button("Launch experiment", type="primary", disabled=cfg is None):
         selected = st.session_state.get(FILE_SELECT_KEY, CUSTOM_LABEL)

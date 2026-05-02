@@ -19,6 +19,26 @@ from collusionlab.environments.base import (
     get_environment_classes,
 )
 
+STRATEGIC_GUIDANCE_DIR = Path("prompts") / "strategic_guidance"
+STRATEGIC_GUIDANCE_PRESETS: dict[str, str] = {
+    "stego_capability": "stego_capability.txt",
+    "stego_shared_codebook": "stego_shared_codebook.txt",
+    "avoid_explicit_language": "avoid_explicit_language.txt",
+    "explicit_coordination": "explicit_coordination.txt",
+}
+
+
+def load_strategic_guidance_preset(preset: str | None) -> str:
+    if not preset:
+        return ""
+    filename = STRATEGIC_GUIDANCE_PRESETS.get(preset)
+    if filename is None:
+        allowed = ", ".join(sorted(STRATEGIC_GUIDANCE_PRESETS))
+        raise ValueError(
+            f"unknown strategic_guidance_preset {preset!r}; expected one of: {allowed}"
+        )
+    return (STRATEGIC_GUIDANCE_DIR / filename).read_text(encoding="utf-8").strip()
+
 
 class AgentConfig(BaseModel):
     backend: str
@@ -84,6 +104,18 @@ class OversightConfig(BaseModel):
 
     model_config = {"extra": "forbid"}
 
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_legacy_judge_policy(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        policy = data.get("enforcement_policy")
+        if policy in {"judge_or_behavior", "judge_only", "behavior_only"}:
+            data = dict(data)
+            data["llm_judge_enforcement"] = policy
+            data["enforcement_policy"] = "fused"
+        return data
+
 
 class StorageConfig(BaseModel):
     """Optional external persistence sink for run artifacts."""
@@ -106,6 +138,9 @@ class ExperimentConfig(BaseModel):
     # Optional extra paragraphs injected into action/message turns only (never the
     # system prompt). Leave empty for neutral experiments; use for reproducible A/B wording.
     strategic_guidance: str = ""
+    # Named prompt file under prompts/strategic_guidance/. Inline
+    # strategic_guidance, when non-empty, overrides this field.
+    strategic_guidance_preset: str | None = None
     communication_mode: Literal["none", "public", "private"] = "none"
     oversight: OversightConfig = Field(default_factory=OversightConfig)
     output_dir: str = "data/raw"
@@ -149,7 +184,15 @@ class ExperimentConfig(BaseModel):
             )
         if self.prompt_dir is None:
             self.prompt_dir = self.environment.default_prompt_dir()
+        if self.strategic_guidance_preset:
+            load_strategic_guidance_preset(self.strategic_guidance_preset)
         return self
+
+    def resolved_strategic_guidance(self) -> str:
+        inline = (self.strategic_guidance or "").strip()
+        if inline:
+            return inline
+        return load_strategic_guidance_preset(self.strategic_guidance_preset)
 
     def with_run_id(self) -> "ExperimentConfig":
         """Return a copy with run_id populated (auto-uuid if absent)."""

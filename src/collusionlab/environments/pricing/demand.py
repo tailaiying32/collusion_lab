@@ -192,10 +192,10 @@ class LinearDifferentiatedDemand(DemandModel):
     def __init__(
         self,
         n_agents: int,
-        a: float = 100.0,
+        a: float = 150.0,
         b: float = 3.0,
         d: float = 2.0,
-        c: float = 60.0,
+        c: float = 30.0,
     ) -> None:
         if n_agents < 2:
             raise ValueError("LinearDifferentiatedDemand requires n_agents >= 2")
@@ -297,10 +297,10 @@ def get_demand_model(name: str, n_agents: int, params: dict) -> DemandModel:
     if name == "linear_differentiated":
         return LinearDifferentiatedDemand(
             n_agents=n_agents,
-            a=params.get("a", 100.0),
+            a=params.get("a", 150.0),
             b=params.get("b", 3.0),
             d=params.get("d", 2.0),
-            c=params.get("c", 60.0),
+            c=params.get("c", 30.0),
         )
     if name == "calvano":
         return CalvanoDemand(

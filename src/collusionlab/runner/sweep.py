@@ -5,7 +5,7 @@ SweepRunner expands configs, runs them in parallel via ProcessPoolExecutor,
 and writes a sweep_manifest.json with per-run status/timing/errors.
 
 CLI:
-    python -m collusionlab.runner.sweep --sweep configs/sweep_comm.yaml --max-workers 4
+    python -m collusionlab.runner.sweep --sweep configs/sweep_stego_study.yaml --max-workers 4
 """
 
 from __future__ import annotations

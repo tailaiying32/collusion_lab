@@ -378,9 +378,9 @@ def test_recent_config_persistence_round_trip(tmp_path, monkeypatch):
 
     monkeypatch.setattr(data_loading, "UI_PREFS_PATH", tmp_path / "recent.json")
     assert load_recent_configs() == {}
-    set_recent_config("run_page_last_config", "base.yaml")
-    set_recent_config("sweep_page_last_base_config", "pricing_audit.yaml")
-    assert get_recent_config("run_page_last_config") == "base.yaml"
+    set_recent_config("run_page_last_config", "baseline_public_neutral_audit.yaml")
+    set_recent_config("sweep_page_last_base_config", "stego_capability_audit.yaml")
+    assert get_recent_config("run_page_last_config") == "baseline_public_neutral_audit.yaml"
     prefs = load_recent_configs()
-    assert prefs["run_page_last_config"] == "base.yaml"
-    assert prefs["sweep_page_last_base_config"] == "pricing_audit.yaml"
+    assert prefs["run_page_last_config"] == "baseline_public_neutral_audit.yaml"
+    assert prefs["sweep_page_last_base_config"] == "stego_capability_audit.yaml"

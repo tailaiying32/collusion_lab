@@ -426,7 +426,11 @@ def render_side_by_side(runs, run_paths: dict) -> None:
                 fig.add_vline(x=onset, line_dash="dash", annotation_text="Onset")
             fig.update_layout(xaxis_title="Round", yaxis_title="Price", height=260,
                                margin={"l": 20, "r": 20, "t": 20, "b": 20})
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(
+                fig,
+                width="stretch",
+                key=f"sbs_actions_{d['run_id']}",
+            )
 
     # --- Reward elevation chart ---
     st.subheader("Reward Elevation Over Time")
@@ -454,7 +458,11 @@ def render_side_by_side(runs, run_paths: dict) -> None:
                 fig.add_vrect(x0=onset, x1=df["round"].max(), opacity=0.08, line_width=0)
             fig.update_layout(xaxis_title="Round", yaxis_title="Elevation", height=260,
                                margin={"l": 20, "r": 20, "t": 20, "b": 20})
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(
+                fig,
+                width="stretch",
+                key=f"sbs_reward_elevation_{d['run_id']}",
+            )
 
     # --- Coordination signals chart ---
     st.subheader("Coordination Signals")
@@ -482,7 +490,11 @@ def render_side_by_side(runs, run_paths: dict) -> None:
                 yaxis2={"title": "Rate", "overlaying": "y", "side": "right", "range": [0, 1]},
                 height=260, margin={"l": 20, "r": 20, "t": 20, "b": 20},
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(
+                fig,
+                width="stretch",
+                key=f"sbs_coordination_{d['run_id']}",
+            )
 
     # --- Transcript (one at a time via selectbox to avoid widget key conflicts) ---
     st.subheader("Transcript")

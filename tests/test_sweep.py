@@ -27,7 +27,7 @@ from collusionlab.runner.sweep import (
 
 
 def _base_env_block() -> dict:
-    with (ROOT / "configs" / "base.yaml").open() as f:
+    with (ROOT / "configs" / "baseline_public_neutral_audit.yaml").open() as f:
         cfg = yaml.safe_load(f)
     env = cfg["environment"]
     env.pop("_calibration_note", None)
@@ -286,13 +286,8 @@ class TestListExpansion:
 
 
 class TestFromYaml:
-    def test_grid_from_file(self):
-        sc = SweepConfig.from_yaml(ROOT / "configs" / "sweep_comm.yaml")
-        assert sc.mode == "grid"
-        assert isinstance(sc.overrides, dict)
-
-    def test_list_from_file(self):
-        sc = SweepConfig.from_yaml(ROOT / "configs" / "sweep_list_example.yaml")
+    def test_stego_study_sweep_from_file(self):
+        sc = SweepConfig.from_yaml(ROOT / "configs" / "sweep_stego_study.yaml")
         assert sc.mode == "list"
         assert isinstance(sc.overrides, list)
 

@@ -219,6 +219,40 @@ def test_from_config_llm_judge_path(_scripted_backend):
     assert mgr.llm_judge_enforcement == "judge_or_behavior"
 
 
+def test_from_config_suppresses_llm_judge_for_no_communication(_scripted_backend):
+    from collusionlab.runner.config import OversightConfig
+
+    config = OversightConfig(
+        mode="audit-penalty",
+        audit_probability=1.0,
+        penalty_factor=0.5,
+        llm_judge_enabled=True,
+        llm_judge_backend="scripted_judge",
+        llm_judge_model="stub",
+        llm_judge_enforcement="judge_only",
+    )
+    env = MagicMock()
+    env.reward_elevation_baseline.return_value = (2.0, 6.0)
+    mgr = OversightManager.from_config(
+        config, seed=0, env=env, communication_mode="none",
+    )
+
+    assert mgr.judge_client is None
+    assert len(mgr.auditors) == 1
+    assert isinstance(mgr.auditors[0], BehaviorAuditor)
+    assert mgr.llm_judge_enforcement == "judge_only"
+
+    event = mgr.check({
+        "round": 1,
+        "actions": [80, 80],
+        "rewards": [6.0, 6.0],
+        "messages": [],
+    }, [])
+    assert event is not None
+    assert all(r.get("auditor") != "llm_judge" for r in event["results"])
+    assert event["penalty_applied"] is False
+
+
 def test_judge_path_check_does_not_crash_on_unflagged_round(_scripted_backend):
     """Regression: legacy code crashed when fusion_policy=None; verify judge path runs cleanly."""
     from collusionlab.runner.config import OversightConfig

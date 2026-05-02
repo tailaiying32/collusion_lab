@@ -27,7 +27,7 @@ from collusionlab.runner.experiment import Experiment
 
 def _base_env_block() -> dict:
     import yaml
-    with (ROOT / "configs" / "base.yaml").open() as f:
+    with (ROOT / "configs" / "baseline_public_neutral_audit.yaml").open() as f:
         cfg = yaml.safe_load(f)
     env = cfg["environment"]
     env.pop("_calibration_note", None)
@@ -72,7 +72,7 @@ def _make_config(
 def test_config_from_yaml_round_trips(tmp_path):
     import yaml
 
-    cfg = ExperimentConfig.from_yaml(ROOT / "configs" / "base.yaml")
+    cfg = ExperimentConfig.from_yaml(ROOT / "configs" / "baseline_public_neutral_audit.yaml")
     dumped = cfg.to_yaml_dict()
     # Subclass-specific env fields must survive serialization (regression: pydantic
     # was stripping them because the field type is the EnvironmentConfig base).
@@ -316,6 +316,11 @@ def test_experiment_persists_to_sqlite_storage(tmp_path):
     assert manifest is not None
     assert manifest["run_id"] == "sqlite-run"
     assert [r["round"] for r in rows] == [1, 2]
+    local_manifest = tmp_path / "files" / "sqlite-run" / "manifest.json"
+    local_log = tmp_path / "files" / "sqlite-run" / "log.jsonl"
+    assert local_manifest.exists()
+    assert local_log.exists()
+    assert len(local_log.read_text(encoding="utf-8").strip().splitlines()) == 2
 
 
 def test_experiment_progress_callback_invoked(tmp_path):
@@ -477,7 +482,7 @@ def test_auditor_notice_toggle_controls_system_prompt(tmp_path):
     prompt0 = agents_with_notice[0].system_prompt.lower()
     assert "independent market regulator" in prompt0
     assert "reservation price in this market is" in prompt0
-    assert "80.0" in prompt0
+    assert "90.0" in prompt0
     assert "coordinate effectively" not in prompt0
 
     cfg_without_notice = cfg.model_copy(
