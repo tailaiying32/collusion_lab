@@ -127,6 +127,15 @@ class StorageConfig(BaseModel):
     model_config = {"extra": "forbid"}
 
 
+class MessageInterventionConfig(BaseModel):
+    """Optional transformation applied to public/private messages before delivery."""
+
+    mode: Literal["none", "dropout", "template_paraphrase"] = "none"
+    dropout_probability: float = Field(default=0.5, ge=0.0, le=1.0)
+
+    model_config = {"extra": "ignore"}
+
+
 class ExperimentConfig(BaseModel):
     run_id: str | None = None
     env_type: str
@@ -143,6 +152,9 @@ class ExperimentConfig(BaseModel):
     # strategic_guidance, when non-empty, overrides this field.
     strategic_guidance_preset: str | None = None
     communication_mode: Literal["none", "public", "private"] = "none"
+    message_intervention: MessageInterventionConfig = Field(
+        default_factory=MessageInterventionConfig
+    )
     oversight: OversightConfig = Field(default_factory=OversightConfig)
     output_dir: str = "data/raw"
     storage: StorageConfig = Field(default_factory=StorageConfig)

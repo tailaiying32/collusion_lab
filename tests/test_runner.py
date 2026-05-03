@@ -16,7 +16,11 @@ from collusionlab.environments.pricing import PricingConfig, PricingGame  # noqa
 import collusionlab.agents.backends.scripted_client  # noqa: F401  (registers "scripted")
 from collusionlab.agents.model_client import ModelClient, register_backend
 from collusionlab.environments.base import get_environment
-from collusionlab.runner.config import ExperimentConfig, StorageConfig
+from collusionlab.runner.config import (
+    ExperimentConfig,
+    MessageInterventionConfig,
+    StorageConfig,
+)
 from collusionlab.runner.experiment import Experiment
 
 
@@ -239,6 +243,33 @@ def test_public_comm_logs_private_communication_reasoning_separately(tmp_path):
         {"communication": "private plan A", "pricing": "7"},
         {"communication": "private plan B", "pricing": "9"},
     ]
+
+
+def test_message_intervention_template_paraphrase_rewrites_content():
+    messages = [{"from": 0, "to": "all", "content": "Quality and service matter."}]
+    rewritten = Experiment._apply_message_intervention(
+        messages,
+        MessageInterventionConfig(mode="template_paraphrase"),
+        seed=1,
+        round_idx=1,
+    )
+    assert rewritten[0]["content"] != messages[0]["content"]
+    assert rewritten[0]["original_content"] == messages[0]["content"]
+    assert rewritten[0]["intervention"]["mode"] == "template_paraphrase"
+
+
+def test_message_intervention_dropout_is_seeded():
+    messages = [{"from": 0, "to": "all", "content": "hello"}]
+    cfg = MessageInterventionConfig(mode="dropout", dropout_probability=1.0)
+    dropped = Experiment._apply_message_intervention(
+        messages,
+        cfg,
+        seed=1,
+        round_idx=1,
+    )
+    assert dropped[0]["content"] == "[Message withheld by communication filter.]"
+    assert dropped[0]["original_content"] == "hello"
+    assert dropped[0]["intervention"] == {"mode": "dropout", "dropped": True}
 
 
 def test_experiment_manifest_fields(tmp_path):

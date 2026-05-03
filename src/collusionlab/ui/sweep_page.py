@@ -331,6 +331,9 @@ def _validate_base_yaml(text: str) -> tuple[str | None, dict | None]:
         return f"Base config YAML parse error: {e}", None
     if not isinstance(data, dict):
         return "Base config top-level YAML must be a mapping.", None
+    # Sweep expansion assigns fresh run IDs. Dropping any base run_id also keeps
+    # the UI compatible with older imported config schemas during hot reloads.
+    data.pop("run_id", None)
     if isinstance(data.get("environment"), dict):
         data["environment"].pop("_calibration_note", None)
     try:
@@ -565,6 +568,13 @@ def _materialize_ui_base_config(text: str) -> Path:
     """Write edited base config to a stable temp file for this UI session."""
     tmp_dir = Path("data/raw/_ui_tmp")
     tmp_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        data = yaml.safe_load(text) or {}
+        if isinstance(data, dict):
+            data.pop("run_id", None)
+            text = yaml.safe_dump(data, sort_keys=False)
+    except yaml.YAMLError:
+        pass
     digest = sha1(text.encode("utf-8")).hexdigest()[:16]
     path = tmp_dir / f"base_{digest}.yaml"
     path.write_text(text, encoding="utf-8")
