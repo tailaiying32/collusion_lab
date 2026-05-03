@@ -21,6 +21,7 @@ from collusionlab.runner.sweep import (
     format_sweep_progress,
     summarize_sweep_storage,
 )
+from collusionlab.storage import SQLiteRunStore, parse_db_run_ref
 
 
 # ---------------------------------------------------------------------------
@@ -398,6 +399,37 @@ class TestSweepRunner:
         assert log_path.exists()
         lines = log_path.read_text().strip().splitlines()
         assert len(lines) == 2  # n_rounds=2
+
+    def test_sweep_manifest_persisted_to_sqlite_storage(self, tmp_path):
+        base = _write_test_base_config(tmp_path / "base.yaml", n_rounds=2)
+        db_path = tmp_path / "runs.sqlite"
+        base_data = yaml.safe_load(base.read_text())
+        base_data["storage"] = {"backend": "sqlite", "uri": str(db_path)}
+        base.write_text(yaml.safe_dump(base_data))
+        sc = SweepConfig(
+            base_config=str(base),
+            mode="list",
+            overrides=[{"environment.seed": 42}],
+        )
+        runner = SweepRunner(
+            sweep_config=sc, max_workers=1, output_dir=str(tmp_path / "out"),
+        )
+        local_sweep_path = runner.run()
+        local_sweep = json.loads(local_sweep_path.read_text())
+
+        store = SQLiteRunStore(str(db_path))
+        db_sweep = store.load_sweep_manifest(local_sweep["sweep_id"])
+        assert db_sweep is not None
+        assert db_sweep["sweep_id"] == local_sweep["sweep_id"]
+        assert db_sweep["status"] == "succeeded"
+        assert len(db_sweep["runs"]) == 1
+        db_run = db_sweep["runs"][0]
+        assert db_run["local_manifest_path"] == local_sweep["runs"][0]["manifest_path"]
+        assert parse_db_run_ref(db_run["manifest_path"]) == (str(db_path), db_run["run_id"])
+
+        listed = store.list_sweeps()
+        assert listed[0]["sweep_id"] == local_sweep["sweep_id"]
+        assert listed[0]["n_succeeded"] == 1
 
     def test_progress_callback(self, tmp_path):
         base = _write_test_base_config(tmp_path / "base.yaml", n_rounds=2)

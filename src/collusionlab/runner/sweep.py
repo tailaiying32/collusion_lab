@@ -34,6 +34,7 @@ from collusionlab.storage import (
     get_run_store,
     is_database_uri,
     is_postgres_uri,
+    make_db_run_ref,
 )
 
 logger = logging.getLogger(__name__)
@@ -245,9 +246,31 @@ def summarize_sweep_storage(
     verify_connection: bool = True,
 ) -> str:
     """Validate and summarize where sweep results will be persisted."""
+    uri = resolve_sweep_storage_uri(configs)
     if not configs:
         return "Storage: no runs in sweep."
 
+    if uri is None:
+        return "Storage: local only. Results will not be persisted to Neon/Postgres."
+    if verify_connection:
+        # Constructor initializes schema; list_runs verifies a basic read path.
+        get_run_store(uri).list_runs()
+
+    storage_entries = [cfg.get("storage") or {"backend": "local", "uri": None} for cfg in configs]
+    source = "storage.uri" if any(entry.get("uri") for entry in storage_entries) else STORAGE_ENV_VAR
+    if is_postgres_uri(uri):
+        return (
+            f"Storage: postgres via {source} ({_describe_storage_uri(uri)}). "
+            "Sweep, runs, and round logs will be persisted to DB plus local output_dir."
+        )
+    return (
+        f"Storage: database via {source} ({_describe_storage_uri(uri)}). "
+        "Sweep, runs, and round logs will be persisted to DB plus local output_dir."
+    )
+
+
+def resolve_sweep_storage_uri(configs: list[dict]) -> str | None:
+    """Resolve the single database URI used by all configs in a sweep."""
     storage_entries = [cfg.get("storage") or {"backend": "local", "uri": None} for cfg in configs]
     resolved_uris: set[str] = set()
 
@@ -273,27 +296,23 @@ def summarize_sweep_storage(
                 )
 
     if not resolved_uris:
-        return "Storage: local only. Results will not be persisted to Neon/Postgres."
-
+        return None
     if len(resolved_uris) > 1:
         targets = ", ".join(sorted(_describe_storage_uri(uri) for uri in resolved_uris))
         raise ValueError(f"sweep resolves to multiple storage targets: {targets}")
+    return next(iter(resolved_uris))
 
-    uri = next(iter(resolved_uris))
-    if verify_connection:
-        # Constructor initializes schema; list_runs verifies a basic read path.
-        get_run_store(uri).list_runs()
 
-    source = "storage.uri" if any(entry.get("uri") for entry in storage_entries) else STORAGE_ENV_VAR
-    if is_postgres_uri(uri):
-        return (
-            f"Storage: postgres via {source} ({_describe_storage_uri(uri)}). "
-            "Runs and round logs will be persisted to DB plus local output_dir."
-        )
-    return (
-        f"Storage: database via {source} ({_describe_storage_uri(uri)}). "
-        "Runs and round logs will be persisted to DB plus local output_dir."
-    )
+def db_persistable_sweep_manifest(manifest: dict[str, Any], storage_uri: str) -> dict[str, Any]:
+    """Return a sweep manifest whose successful runs point at DB run refs."""
+    db_manifest = copy.deepcopy(manifest)
+    for run in db_manifest.get("runs", []) or []:
+        run_id = run.get("run_id")
+        manifest_path = run.get("manifest_path")
+        if run_id and manifest_path:
+            run["local_manifest_path"] = manifest_path
+            run["manifest_path"] = make_db_run_ref(storage_uri, str(run_id))
+    return db_manifest
 
 
 def _describe_storage_uri(uri: str) -> str:
@@ -469,6 +488,28 @@ class SweepRunner:
         start_perf = time.perf_counter()
         n_total = len(configs)
         results: list[dict] = []
+        storage_uri = resolve_sweep_storage_uri(configs)
+        sweep_store = get_run_store(storage_uri) if storage_uri else None
+        running_manifest = {
+            "sweep_id": sweep_id,
+            "status": "running",
+            "started_at": started_at.isoformat(),
+            "ended_at": None,
+            "elapsed_seconds": None,
+            "base_config": self.sweep_config.base_config,
+            "mode": self.sweep_config.mode,
+            "max_workers": self.max_workers,
+            "runs": [],
+        }
+        sweep_manifest_path.write_text(
+            json.dumps(running_manifest, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        if sweep_store:
+            sweep_store.save_sweep_manifest(
+                db_persistable_sweep_manifest(running_manifest, storage_uri),
+                status="running",
+            )
 
         logger.info(
             "Starting sweep %s: %d runs, max_workers=%d",
@@ -525,6 +566,7 @@ class SweepRunner:
 
         manifest = {
             "sweep_id": sweep_id,
+            "status": "succeeded",
             "started_at": started_at.isoformat(),
             "ended_at": ended_at.isoformat(),
             "elapsed_seconds": elapsed,
@@ -537,6 +579,11 @@ class SweepRunner:
             json.dumps(manifest, indent=2, sort_keys=True),
             encoding="utf-8",
         )
+        if sweep_store:
+            sweep_store.save_sweep_manifest(
+                db_persistable_sweep_manifest(manifest, storage_uri),
+                status="succeeded",
+            )
 
         n_ok = sum(1 for r in results if r["status"] == "succeeded")
         n_fail = n_total - n_ok

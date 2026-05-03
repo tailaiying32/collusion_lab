@@ -895,10 +895,20 @@ def page_analyze():
 def render_config_tab(manifest: dict, run_index: pd.DataFrame | None = None, current_run_dir: Path | str | None = None):
     st.subheader("Run Metadata")
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Elapsed (s)", f"{manifest.get('elapsed_seconds', 0):.1f}")
-    col2.metric("Input Tokens", f"{manifest.get('total_input_tokens', 0):,}")
-    col3.metric("Output Tokens", f"{manifest.get('total_output_tokens', 0):,}")
-    col4.metric("Est. Cost ($)", f"{manifest.get('total_cost_estimate_usd', 0):.4f}")
+    elapsed_seconds = manifest.get("elapsed_seconds")
+    input_tokens = manifest.get("total_input_tokens")
+    output_tokens = manifest.get("total_output_tokens")
+    cost_estimate = manifest.get("total_cost_estimate_usd")
+    col1.metric(
+        "Elapsed (s)",
+        f"{elapsed_seconds:.1f}" if elapsed_seconds is not None else "Running",
+    )
+    col2.metric("Input Tokens", f"{input_tokens:,}" if input_tokens is not None else "0")
+    col3.metric("Output Tokens", f"{output_tokens:,}" if output_tokens is not None else "0")
+    col4.metric(
+        "Est. Cost ($)",
+        f"{cost_estimate:.4f}" if cost_estimate is not None else "0.0000",
+    )
 
     st.subheader("Configuration")
     config = manifest.get("config", {})

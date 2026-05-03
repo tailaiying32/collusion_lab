@@ -17,6 +17,7 @@ from collusionlab.storage import (
     get_run_store,
     is_database_uri,
     parse_db_run_ref,
+    parse_db_sweep_ref,
 )
 
 try:
@@ -95,6 +96,10 @@ def list_runs(raw_dir: Path | str) -> list[dict]:
 
 def list_sweeps(raw_dir: Path | str) -> list[dict]:
     """Scan raw_dir for sweep directories and return metadata (newest first)."""
+    raw_ref = str(raw_dir)
+    if is_database_uri(raw_ref):
+        return get_run_store(raw_ref).list_sweeps()
+
     raw_dir = Path(raw_dir)
     sweeps: list[dict] = []
     if not raw_dir.exists():
@@ -148,6 +153,11 @@ def set_recent_config(key: str, config_name: str) -> None:
 
 def load_sweep_manifest(path: Path | str) -> dict | None:
     """Load sweep_manifest.json. Returns None on failure."""
+    db_ref = parse_db_sweep_ref(path)
+    if db_ref is not None:
+        uri, sweep_id = db_ref
+        return get_run_store(uri).load_sweep_manifest(sweep_id)
+
     path = Path(path)
     if not path.exists():
         return None

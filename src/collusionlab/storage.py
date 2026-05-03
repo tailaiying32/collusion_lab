@@ -57,6 +57,17 @@ class RunStore(Protocol):
 
     def list_runs(self) -> list[dict[str, Any]]: ...
 
+    def save_sweep_manifest(
+        self,
+        manifest: dict[str, Any],
+        status: str = "succeeded",
+        error: str | None = None,
+    ) -> None: ...
+
+    def load_sweep_manifest(self, sweep_id: str) -> dict[str, Any] | None: ...
+
+    def list_sweeps(self) -> list[dict[str, Any]]: ...
+
 
 def sqlite_path_from_uri(uri: str) -> Path | str:
     """Parse sqlite:///path/to/db.sqlite or a plain filesystem path."""
@@ -75,10 +86,28 @@ def make_db_run_ref(uri: str, run_id: str) -> str:
     return f"collusionlab-db://run?uri={quote(uri, safe='')}&run_id={quote(run_id, safe='')}"
 
 
+def make_db_sweep_ref(uri: str, sweep_id: str) -> str:
+    return (
+        f"collusionlab-db://sweep?uri={quote(uri, safe='')}"
+        f"&sweep_id={quote(sweep_id, safe='')}"
+    )
+
+
 def parse_db_run_ref(ref: str | Path) -> tuple[str, str] | None:
     raw = str(ref)
     if not raw.startswith("collusionlab-db://run?"):
         return None
+    return _parse_db_ref_query(raw, "run_id")
+
+
+def parse_db_sweep_ref(ref: str | Path) -> tuple[str, str] | None:
+    raw = str(ref)
+    if not raw.startswith("collusionlab-db://sweep?"):
+        return None
+    return _parse_db_ref_query(raw, "sweep_id")
+
+
+def _parse_db_ref_query(raw: str, id_key: str) -> tuple[str, str] | None:
     query = raw.split("?", 1)[1]
     parts: dict[str, str] = {}
     for chunk in query.split("&"):
@@ -86,10 +115,10 @@ def parse_db_run_ref(ref: str | Path) -> tuple[str, str] | None:
             key, value = chunk.split("=", 1)
             parts[key] = unquote(value)
     uri = parts.get("uri")
-    run_id = parts.get("run_id")
-    if not uri or not run_id:
+    item_id = parts.get(id_key)
+    if not uri or not item_id:
         return None
-    return uri, run_id
+    return uri, item_id
 
 
 def run_metadata_from_manifest(
@@ -124,6 +153,30 @@ def run_metadata_from_manifest(
         "memory_window": agents_cfg.get("memory_window"),
         "audit_probability": oversight_cfg.get("audit_probability"),
         "auditor_model": oversight_cfg.get("llm_judge_model"),
+    }
+
+
+def sweep_metadata_from_manifest(
+    manifest: dict[str, Any],
+    sweep_ref: str | Path,
+) -> dict[str, Any]:
+    runs = manifest.get("runs", []) or []
+    n_succeeded = sum(1 for run in runs if run.get("status") == "succeeded")
+    n_failed = sum(1 for run in runs if run.get("status") != "succeeded")
+    return {
+        "sweep_id": manifest.get("sweep_id", ""),
+        "sweep_dir": sweep_ref,
+        "path": sweep_ref,
+        "started_at": manifest.get("started_at", ""),
+        "ended_at": manifest.get("ended_at"),
+        "elapsed_seconds": manifest.get("elapsed_seconds"),
+        "mode": manifest.get("mode", "unknown"),
+        "base_config": manifest.get("base_config"),
+        "max_workers": manifest.get("max_workers"),
+        "n_runs": len(runs),
+        "n_succeeded": n_succeeded,
+        "n_failed": n_failed,
+        "status": manifest.get("status", "unknown"),
     }
 
 
@@ -174,6 +227,25 @@ class SQLiteRunStore:
                     row_json TEXT NOT NULL,
                     PRIMARY KEY (run_id, round),
                     FOREIGN KEY (run_id) REFERENCES runs(run_id) ON DELETE CASCADE
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS sweeps (
+                    sweep_id TEXT PRIMARY KEY,
+                    status TEXT NOT NULL,
+                    started_at TEXT,
+                    ended_at TEXT,
+                    mode TEXT,
+                    base_config TEXT,
+                    max_workers INTEGER,
+                    n_runs INTEGER,
+                    n_succeeded INTEGER,
+                    n_failed INTEGER,
+                    manifest_json TEXT NOT NULL,
+                    error TEXT,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
                 """
             )
@@ -264,6 +336,83 @@ class SQLiteRunStore:
             )
         return records
 
+    def save_sweep_manifest(
+        self,
+        manifest: dict[str, Any],
+        status: str = "succeeded",
+        error: str | None = None,
+    ) -> None:
+        sweep_id = str(manifest["sweep_id"])
+        payload = json.dumps({**manifest, "status": status}, sort_keys=True)
+        runs = manifest.get("runs", []) or []
+        n_succeeded = sum(1 for run in runs if run.get("status") == "succeeded")
+        n_failed = sum(1 for run in runs if run.get("status") != "succeeded")
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO sweeps (
+                    sweep_id, status, started_at, ended_at, mode, base_config,
+                    max_workers, n_runs, n_succeeded, n_failed, manifest_json,
+                    error, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(sweep_id) DO UPDATE SET
+                    status=excluded.status,
+                    started_at=excluded.started_at,
+                    ended_at=excluded.ended_at,
+                    mode=excluded.mode,
+                    base_config=excluded.base_config,
+                    max_workers=excluded.max_workers,
+                    n_runs=excluded.n_runs,
+                    n_succeeded=excluded.n_succeeded,
+                    n_failed=excluded.n_failed,
+                    manifest_json=excluded.manifest_json,
+                    error=excluded.error,
+                    updated_at=CURRENT_TIMESTAMP
+                """,
+                (
+                    sweep_id,
+                    status,
+                    manifest.get("started_at"),
+                    manifest.get("ended_at"),
+                    manifest.get("mode"),
+                    manifest.get("base_config"),
+                    manifest.get("max_workers"),
+                    len(runs),
+                    n_succeeded,
+                    n_failed,
+                    payload,
+                    error,
+                ),
+            )
+
+    def load_sweep_manifest(self, sweep_id: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT manifest_json FROM sweeps WHERE sweep_id = ?", (sweep_id,)
+            ).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def list_sweeps(self) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT sweep_id, manifest_json FROM sweeps
+                WHERE status IN ('running', 'succeeded')
+                ORDER BY COALESCE(started_at, '') DESC
+                """
+            ).fetchall()
+        records: list[dict[str, Any]] = []
+        for sweep_id, manifest_json in rows:
+            manifest = json.loads(manifest_json)
+            records.append(
+                sweep_metadata_from_manifest(
+                    {**manifest, "sweep_id": manifest.get("sweep_id", sweep_id)},
+                    make_db_sweep_ref(self.uri, str(sweep_id)),
+                )
+            )
+        return records
+
 
 class PostgresRunStore:
     """Postgres-backed storage for run manifests and round JSON rows."""
@@ -326,6 +475,26 @@ class PostgresRunStore:
                 """
             )
             conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS sweeps (
+                    sweep_id TEXT PRIMARY KEY,
+                    status TEXT NOT NULL,
+                    started_at TIMESTAMPTZ,
+                    ended_at TIMESTAMPTZ,
+                    mode TEXT,
+                    base_config TEXT,
+                    max_workers INTEGER,
+                    n_runs INTEGER,
+                    n_succeeded INTEGER,
+                    n_failed INTEGER,
+                    manifest_json JSONB NOT NULL,
+                    error TEXT,
+                    created_at TIMESTAMPTZ DEFAULT now(),
+                    updated_at TIMESTAMPTZ DEFAULT now()
+                )
+                """
+            )
+            conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_runs_start_time ON runs (start_time DESC)"
             )
             conn.execute(
@@ -333,6 +502,9 @@ class PostgresRunStore:
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_round_logs_run_round ON round_logs (run_id, round)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_sweeps_started_at ON sweeps (started_at DESC)"
             )
 
     def save_manifest(
@@ -440,6 +612,85 @@ class PostgresRunStore:
             run_metadata_from_manifest(
                 {**row["manifest_json"], "run_id": row["manifest_json"].get("run_id", row["run_id"])},
                 make_db_run_ref(self.uri, str(row["run_id"])),
+            )
+            for row in rows
+        ]
+
+    def save_sweep_manifest(
+        self,
+        manifest: dict[str, Any],
+        status: str = "succeeded",
+        error: str | None = None,
+    ) -> None:
+        sweep_id = str(manifest["sweep_id"])
+        manifest_with_status = {**manifest, "status": status}
+        runs = manifest.get("runs", []) or []
+        n_succeeded = sum(1 for run in runs if run.get("status") == "succeeded")
+        n_failed = sum(1 for run in runs if run.get("status") != "succeeded")
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO sweeps (
+                    sweep_id, status, started_at, ended_at, mode, base_config,
+                    max_workers, n_runs, n_succeeded, n_failed, manifest_json,
+                    error, updated_at
+                )
+                VALUES (
+                    %(sweep_id)s, %(status)s, %(started_at)s, %(ended_at)s,
+                    %(mode)s, %(base_config)s, %(max_workers)s, %(n_runs)s,
+                    %(n_succeeded)s, %(n_failed)s, %(manifest_json)s,
+                    %(error)s, now()
+                )
+                ON CONFLICT(sweep_id) DO UPDATE SET
+                    status=excluded.status,
+                    started_at=excluded.started_at,
+                    ended_at=excluded.ended_at,
+                    mode=excluded.mode,
+                    base_config=excluded.base_config,
+                    max_workers=excluded.max_workers,
+                    n_runs=excluded.n_runs,
+                    n_succeeded=excluded.n_succeeded,
+                    n_failed=excluded.n_failed,
+                    manifest_json=excluded.manifest_json,
+                    error=excluded.error,
+                    updated_at=now()
+                """,
+                {
+                    "sweep_id": sweep_id,
+                    "status": status,
+                    "started_at": manifest.get("started_at"),
+                    "ended_at": manifest.get("ended_at"),
+                    "mode": manifest.get("mode"),
+                    "base_config": manifest.get("base_config"),
+                    "max_workers": manifest.get("max_workers"),
+                    "n_runs": len(runs),
+                    "n_succeeded": n_succeeded,
+                    "n_failed": n_failed,
+                    "manifest_json": self._jsonb(manifest_with_status),
+                    "error": error,
+                },
+            )
+
+    def load_sweep_manifest(self, sweep_id: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT manifest_json FROM sweeps WHERE sweep_id = %s", (sweep_id,)
+            ).fetchone()
+        return row["manifest_json"] if row else None
+
+    def list_sweeps(self) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT sweep_id, manifest_json FROM sweeps
+                WHERE status IN ('running', 'succeeded')
+                ORDER BY started_at DESC NULLS LAST
+                """
+            ).fetchall()
+        return [
+            sweep_metadata_from_manifest(
+                {**row["manifest_json"], "sweep_id": row["manifest_json"].get("sweep_id", row["sweep_id"])},
+                make_db_sweep_ref(self.uri, str(row["sweep_id"])),
             )
             for row in rows
         ]

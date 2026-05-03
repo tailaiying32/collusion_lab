@@ -17,7 +17,7 @@ from typing import Any
 
 import pandas as pd
 
-from collusionlab.storage import get_run_store, parse_db_run_ref
+from collusionlab.storage import get_run_store, parse_db_run_ref, parse_db_sweep_ref
 
 logger = logging.getLogger(__name__)
 
@@ -159,8 +159,20 @@ class LogReader:
     @classmethod
     def load_sweep(cls, sweep_manifest_path: str | Path) -> list[RunData]:
         """Load all runs referenced by a ``sweep_manifest.json``."""
+        db_ref = parse_db_sweep_ref(sweep_manifest_path)
+        if db_ref is not None:
+            uri, sweep_id = db_ref
+            sweep = get_run_store(uri).load_sweep_manifest(sweep_id)
+            if sweep is None:
+                raise FileNotFoundError(f"sweep {sweep_id!r} not found in {uri!r}")
+            return cls._load_sweep_runs(sweep)
+
         sweep_manifest_path = Path(sweep_manifest_path)
         sweep = json.loads(sweep_manifest_path.read_text(encoding="utf-8"))
+        return cls._load_sweep_runs(sweep)
+
+    @classmethod
+    def _load_sweep_runs(cls, sweep: dict[str, Any]) -> list[RunData]:
         runs: list[RunData] = []
         for entry in sweep.get("runs", []):
             if entry.get("status") != "succeeded":

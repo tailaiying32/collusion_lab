@@ -32,7 +32,9 @@ from collusionlab.storage import (
     is_database_uri,
     is_postgres_uri,
     make_db_run_ref,
+    make_db_sweep_ref,
     parse_db_run_ref,
+    parse_db_sweep_ref,
 )
 
 
@@ -204,6 +206,34 @@ def test_load_sweep_manifest_missing_or_corrupt(tmp_path):
     assert load_sweep_manifest(bad) is None
 
 
+def test_sqlite_sweep_listing_and_loading(tmp_path):
+    db_path = tmp_path / "runs.sqlite"
+    store = SQLiteRunStore(str(db_path))
+    sweep_manifest = {
+        "sweep_id": "sweep-123",
+        "status": "succeeded",
+        "started_at": "2026-04-29T01:00:00+00:00",
+        "ended_at": "2026-04-29T01:02:00+00:00",
+        "elapsed_seconds": 120.0,
+        "base_config": "configs/base.yaml",
+        "mode": "list",
+        "max_workers": 1,
+        "runs": [{"run_id": "run-1", "status": "succeeded", "manifest_path": "x"}],
+    }
+    store.save_sweep_manifest(sweep_manifest)
+
+    sweeps = list_sweeps(str(db_path))
+    assert len(sweeps) == 1
+    assert sweeps[0]["sweep_id"] == "sweep-123"
+    assert sweeps[0]["n_runs"] == 1
+
+    sweep_ref = make_db_sweep_ref(str(db_path), "sweep-123")
+    assert parse_db_sweep_ref(sweep_ref) == (str(db_path), "sweep-123")
+    loaded = load_sweep_manifest(sweep_ref)
+    assert loaded is not None
+    assert loaded["sweep_id"] == "sweep-123"
+
+
 # ---------------------------------------------------------------------------
 # load_manifest tests
 # ---------------------------------------------------------------------------
@@ -280,10 +310,12 @@ def test_sqlite_run_listing_and_loading(tmp_path, sample_manifest, sample_log_ro
 def test_postgres_storage_uri_helpers():
     uri = "postgresql://user:pass@example.neon.tech/collusionlab?sslmode=require"
     run_ref = make_db_run_ref(uri, "run-123")
+    sweep_ref = make_db_sweep_ref(uri, "sweep-123")
 
     assert is_postgres_uri(uri)
     assert is_database_uri(uri)
     assert parse_db_run_ref(run_ref) == (uri, "run-123")
+    assert parse_db_sweep_ref(sweep_ref) == (uri, "sweep-123")
 
 
 # ---------------------------------------------------------------------------
