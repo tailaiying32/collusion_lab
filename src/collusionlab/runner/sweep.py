@@ -23,9 +23,18 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Literal
+from urllib.parse import urlparse
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
+
+from collusionlab.storage import (
+    STORAGE_ENV_VAR,
+    configured_storage_uri,
+    get_run_store,
+    is_database_uri,
+    is_postgres_uri,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -226,6 +235,128 @@ class SweepConfig(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# CLI storage preflight + progress display
+# ---------------------------------------------------------------------------
+
+
+def summarize_sweep_storage(
+    configs: list[dict],
+    *,
+    verify_connection: bool = True,
+) -> str:
+    """Validate and summarize where sweep results will be persisted."""
+    if not configs:
+        return "Storage: no runs in sweep."
+
+    storage_entries = [cfg.get("storage") or {"backend": "local", "uri": None} for cfg in configs]
+    resolved_uris: set[str] = set()
+
+    for entry in storage_entries:
+        backend = str(entry.get("backend", "local"))
+        explicit_uri = entry.get("uri")
+        uri = (
+            configured_storage_uri(explicit_uri)
+            if backend != "local" or explicit_uri
+            else None
+        )
+        if backend != "local" or is_database_uri(uri):
+            if not uri:
+                raise ValueError(
+                    "database storage is enabled, but no storage URI is configured. "
+                    f"Set {STORAGE_ENV_VAR} on the HPC job or provide storage.uri."
+                )
+            resolved_uris.add(uri)
+            if backend == "postgres" and not is_postgres_uri(uri):
+                raise ValueError(
+                    "storage.backend is 'postgres', but the resolved storage URI "
+                    f"is not PostgreSQL: {_describe_storage_uri(uri)}"
+                )
+
+    if not resolved_uris:
+        return "Storage: local only. Results will not be persisted to Neon/Postgres."
+
+    if len(resolved_uris) > 1:
+        targets = ", ".join(sorted(_describe_storage_uri(uri) for uri in resolved_uris))
+        raise ValueError(f"sweep resolves to multiple storage targets: {targets}")
+
+    uri = next(iter(resolved_uris))
+    if verify_connection:
+        # Constructor initializes schema; list_runs verifies a basic read path.
+        get_run_store(uri).list_runs()
+
+    source = "storage.uri" if any(entry.get("uri") for entry in storage_entries) else STORAGE_ENV_VAR
+    if is_postgres_uri(uri):
+        return (
+            f"Storage: postgres via {source} ({_describe_storage_uri(uri)}). "
+            "Runs and round logs will be persisted to DB plus local output_dir."
+        )
+    return (
+        f"Storage: database via {source} ({_describe_storage_uri(uri)}). "
+        "Runs and round logs will be persisted to DB plus local output_dir."
+    )
+
+
+def _describe_storage_uri(uri: str) -> str:
+    parsed = urlparse(uri)
+    if parsed.scheme in {"postgres", "postgresql"}:
+        host = parsed.hostname or "unknown-host"
+        database = parsed.path.lstrip("/") or "unknown-db"
+        return f"{parsed.scheme}://{host}/{database}"
+    if parsed.scheme:
+        return f"{parsed.scheme}://{parsed.netloc or parsed.path}"
+    return Path(uri).name or uri
+
+
+class TerminalSweepProgress:
+    def __init__(self, total: int, *, stream=None, width: int = 24) -> None:
+        self.total = max(total, 1)
+        self.stream = stream or sys.stdout
+        self.width = width
+        self.started_at = time.perf_counter()
+        self.ok = 0
+        self.failed = 0
+        self._interactive = bool(getattr(self.stream, "isatty", lambda: False)())
+
+    def update(self, result: dict) -> None:
+        if result.get("status") == "succeeded":
+            self.ok += 1
+        else:
+            self.failed += 1
+        done = self.ok + self.failed
+        line = format_sweep_progress(
+            done=done,
+            total=self.total,
+            ok=self.ok,
+            failed=self.failed,
+            elapsed=time.perf_counter() - self.started_at,
+            width=self.width,
+        )
+        end = "" if self._interactive and done < self.total else "\n"
+        prefix = "\r" if self._interactive else ""
+        self.stream.write(prefix + line + end)
+        self.stream.flush()
+
+
+def format_sweep_progress(
+    *,
+    done: int,
+    total: int,
+    ok: int,
+    failed: int,
+    elapsed: float,
+    width: int = 24,
+) -> str:
+    total = max(total, 1)
+    done = min(max(done, 0), total)
+    filled = int(round(width * done / total))
+    bar = "#" * filled + "-" * (width - filled)
+    return (
+        f"Sweep progress [{bar}] {done}/{total} complete | "
+        f"ok={ok} failed={failed} | elapsed={elapsed:.1f}s"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Spawn-safe worker (top-level function for ProcessPoolExecutor on Windows)
 # ---------------------------------------------------------------------------
 
@@ -294,6 +425,7 @@ def _run_single_experiment(config_data: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 SweepProgressCallback = Callable[[int, int], None]
+SweepResultCallback = Callable[[dict], None]
 
 
 class SweepRunner:
@@ -309,11 +441,13 @@ class SweepRunner:
         max_workers: int | None = None,
         output_dir: str | None = None,
         progress_callback: SweepProgressCallback | None = None,
+        result_callback: SweepResultCallback | None = None,
     ) -> None:
         self.sweep_config = sweep_config
         self.max_workers = max_workers or os.cpu_count() or 1
         self.output_dir = output_dir
         self.progress_callback = progress_callback
+        self.result_callback = result_callback
 
     def run(self) -> Path:
         """Execute the sweep and return the path to ``sweep_manifest.json``."""
@@ -379,6 +513,8 @@ class SweepRunner:
                 )
                 if self.progress_callback:
                     self.progress_callback(n_done, n_total)
+                if self.result_callback:
+                    self.result_callback(result)
 
         ended_at = datetime.now(timezone.utc)
         elapsed = time.perf_counter() - start_perf
@@ -449,6 +585,11 @@ def main(argv: list[str] | None = None) -> None:
         default="INFO",
         help="Python logging level (default INFO).",
     )
+    parser.add_argument(
+        "--skip-storage-preflight",
+        action="store_true",
+        help="Skip database storage connectivity check before launching workers.",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(
@@ -462,12 +603,32 @@ def main(argv: list[str] | None = None) -> None:
 
     sweep_path = args.sweep_path or args.sweep_path_alt
     sweep_cfg = SweepConfig.from_yaml(sweep_path)
+    configs = sweep_cfg.expand()
+    storage_summary = summarize_sweep_storage(
+        configs,
+        verify_connection=not args.skip_storage_preflight,
+    )
+    print(storage_summary)
+    progress = TerminalSweepProgress(len(configs))
     runner = SweepRunner(
         sweep_config=sweep_cfg,
         max_workers=args.max_workers,
         output_dir=args.output_dir,
+        result_callback=progress.update,
     )
     manifest_path = runner.run()
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    runs = manifest.get("runs", [])
+    n_ok = sum(1 for run in runs if run.get("status") == "succeeded")
+    n_fail = len(runs) - n_ok
+    print(
+        f"Sweep complete: {n_ok} succeeded, {n_fail} failed, "
+        f"{manifest.get('elapsed_seconds', 0):.1f}s elapsed"
+    )
+    if n_fail:
+        print("Failed run summaries:")
+        for run in [r for r in runs if r.get("status") != "succeeded"][:5]:
+            print(f"- {run.get('run_id')}: {run.get('error')}")
     print(str(manifest_path))
 
 

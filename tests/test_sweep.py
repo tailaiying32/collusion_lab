@@ -18,6 +18,8 @@ from collusionlab.runner.sweep import (
     SweepConfig,
     SweepRunner,
     apply_overrides,
+    format_sweep_progress,
+    summarize_sweep_storage,
 )
 
 
@@ -121,6 +123,47 @@ class TestApplyOverrides:
         data = {"run_id": "abc"}
         result = apply_overrides(data, {"run_id": None})
         assert result["run_id"] is None
+
+
+class TestSweepCliHelpers:
+    def test_storage_preflight_requires_uri_for_postgres_backend(self, monkeypatch):
+        monkeypatch.delenv("COLLUSIONLAB_STORAGE_URL", raising=False)
+        configs = [{"storage": {"backend": "postgres", "uri": None}}]
+        with pytest.raises(ValueError, match="COLLUSIONLAB_STORAGE_URL"):
+            summarize_sweep_storage(configs, verify_connection=False)
+
+    def test_storage_preflight_uses_env_uri(self, monkeypatch):
+        monkeypatch.setenv(
+            "COLLUSIONLAB_STORAGE_URL",
+            "postgresql://user:secret@example.neon.tech/neondb",
+        )
+        configs = [{"storage": {"backend": "postgres", "uri": None}}]
+        summary = summarize_sweep_storage(configs, verify_connection=False)
+        assert "postgres via COLLUSIONLAB_STORAGE_URL" in summary
+        assert "example.neon.tech/neondb" in summary
+        assert "secret" not in summary
+
+    def test_storage_preflight_local_only_does_not_require_uri(self, monkeypatch):
+        monkeypatch.setenv(
+            "COLLUSIONLAB_STORAGE_URL",
+            "postgresql://user:secret@example.neon.tech/neondb",
+        )
+        configs = [{"storage": {"backend": "local", "uri": None}}]
+        assert "local only" in summarize_sweep_storage(configs, verify_connection=False)
+
+    def test_format_sweep_progress(self):
+        line = format_sweep_progress(
+            done=2,
+            total=4,
+            ok=1,
+            failed=1,
+            elapsed=12.34,
+            width=10,
+        )
+        assert line == (
+            "Sweep progress [#####-----] 2/4 complete | "
+            "ok=1 failed=1 | elapsed=12.3s"
+        )
 
     def test_rejects_out_of_range_index(self):
         data = {"agents": {"temp": 0.2}}
