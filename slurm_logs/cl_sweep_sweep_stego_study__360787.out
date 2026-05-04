@@ -1,0 +1,12 @@
+Job 360787 started on snavely-cpu-16.cs.cornell.edu at Sat May  2 09:21:54 PM EDT 2026
+Repo: /home/tty6/collusion_lab
+Config: configs/sweep_stego_study.yaml
+Kind: sweep
+Python: /home/tty6/miniforge3/envs/collusion_lab/bin/python
+Starting command: python -m collusionlab.runner.sweep --sweep configs/sweep_stego_study.yaml --max-workers 4 --log-level INFO
+Storage: postgres via COLLUSIONLAB_STORAGE_URL (postgresql://ep-patient-boat-amrip5ax-pooler.c-5.us-east-1.aws.neon.tech/neondb). Runs and round logs will be persisted to DB plus local output_dir.
+Sweep progress [#-----------------------] 1/27 complete | ok=1 failed=0 | elapsed=117.9s
+Sweep progress [##----------------------] 2/27 complete | ok=2 failed=0 | elapsed=118.1s
+Sweep progress [###---------------------] 3/27 complete | ok=3 failed=0 | elapsed=118.6s
+Sweep progress [####--------------------] 4/27 complete | ok=4 failed=0 | elapsed=450.1s
+Sweep progress [####--------------------] 5/27 complete | ok=5 failed=0 | elapsed=603.4s

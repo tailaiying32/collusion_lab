@@ -1,0 +1,37 @@
+Job 377722 started on unicorn-cpu-01.coecis.cornell.edu at Sun May  3 09:21:42 PM EDT 2026
+Repo: /home/tty6/collusion_lab
+Config: configs/sweep_stego_study.yaml
+Kind: sweep
+Python: /home/tty6/miniforge3/envs/collusion_lab/bin/python
+Starting command: python -m collusionlab.runner.sweep --sweep configs/sweep_stego_study.yaml --max-workers 1 --log-level INFO
+Storage: postgres via COLLUSIONLAB_STORAGE_URL (postgresql://ep-patient-boat-amrip5ax-pooler.c-5.us-east-1.aws.neon.tech/neondb). Sweep, runs, and round logs will be persisted to DB plus local output_dir.
+Sweep progress [#-----------------------] 1/27 complete | ok=1 failed=0 | elapsed=151.3s
+Sweep progress [##----------------------] 2/27 complete | ok=2 failed=0 | elapsed=288.2s
+Sweep progress [###---------------------] 3/27 complete | ok=3 failed=0 | elapsed=437.0s
+Sweep progress [####--------------------] 4/27 complete | ok=4 failed=0 | elapsed=871.2s
+Sweep progress [####--------------------] 5/27 complete | ok=5 failed=0 | elapsed=1291.8s
+Sweep progress [#####-------------------] 6/27 complete | ok=6 failed=0 | elapsed=1713.4s
+Sweep progress [######------------------] 7/27 complete | ok=7 failed=0 | elapsed=2139.5s
+Sweep progress [#######-----------------] 8/27 complete | ok=8 failed=0 | elapsed=2680.7s
+Sweep progress [########----------------] 9/27 complete | ok=9 failed=0 | elapsed=3111.1s
+Sweep progress [#########---------------] 10/27 complete | ok=10 failed=0 | elapsed=3495.6s
+Sweep progress [##########--------------] 11/27 complete | ok=11 failed=0 | elapsed=3908.8s
+Sweep progress [###########-------------] 12/27 complete | ok=12 failed=0 | elapsed=4317.5s
+Sweep progress [############------------] 13/27 complete | ok=13 failed=0 | elapsed=4725.1s
+Sweep progress [############------------] 14/27 complete | ok=14 failed=0 | elapsed=5153.4s
+Sweep progress [#############-----------] 15/27 complete | ok=15 failed=0 | elapsed=5533.9s
+Sweep progress [##############----------] 16/27 complete | ok=16 failed=0 | elapsed=5878.0s
+Sweep progress [###############---------] 17/27 complete | ok=17 failed=0 | elapsed=6216.8s
+Sweep progress [################--------] 18/27 complete | ok=18 failed=0 | elapsed=6579.8s
+Sweep progress [#################-------] 19/27 complete | ok=19 failed=0 | elapsed=6970.9s
+Sweep progress [##################------] 20/27 complete | ok=20 failed=0 | elapsed=7428.9s
+Sweep progress [###################-----] 21/27 complete | ok=21 failed=0 | elapsed=7726.6s
+Sweep progress [####################----] 22/27 complete | ok=22 failed=0 | elapsed=8018.3s
+Sweep progress [####################----] 23/27 complete | ok=23 failed=0 | elapsed=8313.9s
+Sweep progress [#####################---] 24/27 complete | ok=24 failed=0 | elapsed=8665.4s
+Sweep progress [######################--] 25/27 complete | ok=25 failed=0 | elapsed=8993.1s
+Sweep progress [#######################-] 26/27 complete | ok=26 failed=0 | elapsed=9305.8s
+Sweep progress [########################] 27/27 complete | ok=27 failed=0 | elapsed=9666.5s
+Sweep complete: 27 succeeded, 0 failed, 9666.6s elapsed
+data/raw/sweep_a83d32e8-8bb1-4f19-a826-b50f92ac6f3b/sweep_manifest.json
+Job 377722 finished at Mon May  4 12:03:01 AM EDT 2026

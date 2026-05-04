@@ -1,0 +1,37 @@
+Job 361083 started on snavely-cpu-16.cs.cornell.edu at Sat May  2 09:34:20 PM EDT 2026
+Repo: /home/tty6/collusion_lab
+Config: configs/sweep_stego_study.yaml
+Kind: sweep
+Python: /home/tty6/miniforge3/envs/collusion_lab/bin/python
+Starting command: python -m collusionlab.runner.sweep --sweep configs/sweep_stego_study.yaml --max-workers 1 --log-level INFO
+Storage: postgres via COLLUSIONLAB_STORAGE_URL (postgresql://ep-patient-boat-amrip5ax-pooler.c-5.us-east-1.aws.neon.tech/neondb). Runs and round logs will be persisted to DB plus local output_dir.
+Sweep progress [#-----------------------] 1/27 complete | ok=1 failed=0 | elapsed=115.5s
+Sweep progress [##----------------------] 2/27 complete | ok=2 failed=0 | elapsed=222.3s
+Sweep progress [###---------------------] 3/27 complete | ok=3 failed=0 | elapsed=339.7s
+Sweep progress [####--------------------] 4/27 complete | ok=4 failed=0 | elapsed=675.8s
+Sweep progress [####--------------------] 5/27 complete | ok=5 failed=0 | elapsed=1017.0s
+Sweep progress [#####-------------------] 6/27 complete | ok=6 failed=0 | elapsed=1355.1s
+Sweep progress [######------------------] 7/27 complete | ok=7 failed=0 | elapsed=1703.3s
+Sweep progress [#######-----------------] 8/27 complete | ok=8 failed=0 | elapsed=2036.9s
+Sweep progress [########----------------] 9/27 complete | ok=9 failed=0 | elapsed=2406.9s
+Sweep progress [#########---------------] 10/27 complete | ok=10 failed=0 | elapsed=2773.0s
+Sweep progress [##########--------------] 11/27 complete | ok=11 failed=0 | elapsed=3135.5s
+Sweep progress [###########-------------] 12/27 complete | ok=12 failed=0 | elapsed=3495.5s
+Sweep progress [############------------] 13/27 complete | ok=13 failed=0 | elapsed=3860.3s
+Sweep progress [############------------] 14/27 complete | ok=14 failed=0 | elapsed=4227.0s
+Sweep progress [#############-----------] 15/27 complete | ok=15 failed=0 | elapsed=4612.6s
+Sweep progress [##############----------] 16/27 complete | ok=16 failed=0 | elapsed=4981.6s
+Sweep progress [###############---------] 17/27 complete | ok=17 failed=0 | elapsed=5398.3s
+Sweep progress [################--------] 18/27 complete | ok=18 failed=0 | elapsed=5769.8s
+Sweep progress [#################-------] 19/27 complete | ok=19 failed=0 | elapsed=6140.5s
+Sweep progress [##################------] 20/27 complete | ok=20 failed=0 | elapsed=6467.5s
+Sweep progress [###################-----] 21/27 complete | ok=21 failed=0 | elapsed=6756.0s
+Sweep progress [####################----] 22/27 complete | ok=22 failed=0 | elapsed=7053.6s
+Sweep progress [####################----] 23/27 complete | ok=23 failed=0 | elapsed=7364.3s
+Sweep progress [#####################---] 24/27 complete | ok=24 failed=0 | elapsed=7696.9s
+Sweep progress [######################--] 25/27 complete | ok=25 failed=0 | elapsed=8019.4s
+Sweep progress [#######################-] 26/27 complete | ok=26 failed=0 | elapsed=8332.9s
+Sweep progress [########################] 27/27 complete | ok=27 failed=0 | elapsed=8634.5s
+Sweep complete: 27 succeeded, 0 failed, 8634.6s elapsed
+data/raw/sweep_9ae3d8d5-3675-4637-9ca0-6577200e8f65/sweep_manifest.json
+Job 361083 finished at Sat May  2 11:58:17 PM EDT 2026
