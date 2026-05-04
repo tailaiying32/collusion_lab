@@ -41,7 +41,7 @@ CUSTOM_LABEL = "(custom)"
 RECENT_SWEEP_CONFIG_KEY = "sweep_page_last_sweep_config"
 RECENT_BASE_CONFIG_KEY = "sweep_page_last_base_config"
 BACKEND_MODELS: dict[str, list[str]] = {
-    "openai": ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-5-mini"],
+    "openai": ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1", "gpt-5-mini", "gpt-5.1"],
     "anthropic": ["claude-haiku-4-5-20251001", "claude-sonnet-4-6", "claude-opus-4-7"],
     "deepseek": ["deepseek-v4-flash"],
 }

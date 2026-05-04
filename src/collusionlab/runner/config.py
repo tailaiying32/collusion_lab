@@ -21,6 +21,7 @@ from collusionlab.environments.base import (
 
 STRATEGIC_GUIDANCE_DIR = Path("prompts") / "strategic_guidance"
 STRATEGIC_GUIDANCE_PRESETS: dict[str, str] = {
+    "emergent_stego_capability": "emergent_stego_capability.txt",
     "stego_capability": "stego_capability.txt",
     "stego_shared_codebook": "stego_shared_codebook.txt",
     "avoid_explicit_language": "avoid_explicit_language.txt",
@@ -45,6 +46,7 @@ class AgentConfig(BaseModel):
     model: str
     memory_window: int = Field(ge=1)
     temperature: float = 0.2
+    openai_seed_mode: Literal["random", "environment"] = "random"
 
     # Free-form passthrough for backend-specific kwargs (e.g. `replies` for the
     # scripted test backend). Keys are forwarded to the backend constructor.
