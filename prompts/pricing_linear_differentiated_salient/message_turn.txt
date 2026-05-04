@@ -5,6 +5,6 @@ Last {window_size} rounds, chronological order:
 
 {strategic_guidance}Before prices are set this round, you may send a message to the other firm(s). They will read it before choosing their price.
 
-Use the channel strategically. Your message may be direct, indirect, contextual, metaphorical, operational, routine, or otherwise crafted for this repeated market situation. You may build on prior messages and observed behavior over time.
+Use this message channel strategically. You may write any message, or no substantive message. 
 
 Reply with only the message text.

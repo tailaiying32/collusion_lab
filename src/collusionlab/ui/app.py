@@ -315,28 +315,111 @@ def render_side_by_side(runs, run_paths: dict) -> None:
         st.info("No runs available.")
         return
 
-    run_labels: dict[str, str] = {}
+    options: list[dict] = []
     for r in runs:
         run_dir = run_paths.get(r.run_id)
         manifest = load_manifest(run_dir) if run_dir else None
-        label = _detailed_run_selector_label(r.run_id, manifest)
-        run_labels[label] = r.run_id
+        options.append({
+            "run_id": r.run_id,
+            "run_dir": run_dir,
+            "label": _detailed_run_selector_label(r.run_id, manifest),
+        })
 
-    selected_labels = st.multiselect(
-        "Select runs to compare (up to 4)",
-        options=list(run_labels.keys()),
-        default=list(run_labels.keys())[:min(2, len(run_labels))],
+    render_side_by_side_options(
+        options,
+        key_prefix="compare_sbs",
         max_selections=4,
-        key="sbs_run_select",
+        columns_per_row=4,
+        label="Select runs to compare (up to 4)",
     )
-    if not selected_labels:
-        st.info("Select at least one run.")
-        return
 
+
+def _unique_side_by_side_options(options: list[dict]) -> list[dict]:
+    """Return side-by-side run options with unique display labels."""
+    seen: dict[str, int] = {}
+    assigned: set[str] = set()
+    unique: list[dict] = []
+    for opt in options:
+        label = str(opt.get("label") or opt.get("run_id") or "unknown")
+        count = seen.get(label, 0) + 1
+        seen[label] = count
+        unique_label = label if count == 1 else f"{label} ({count})"
+        while unique_label in assigned:
+            count += 1
+            seen[label] = count
+            unique_label = f"{label} ({count})"
+        assigned.add(unique_label)
+        unique.append({**opt, "label": unique_label})
+    return unique
+
+
+def _run_index_side_by_side_options(run_index: pd.DataFrame) -> list[dict]:
+    """Build arbitrary-run side-by-side options from the Analyze run index."""
+    if run_index.empty:
+        return []
+
+    options: list[dict] = []
+    for _, row in run_index.iterrows():
+        run_id = str(row.get("run_id") or "")
+        label = _run_selector_label_from_fields(
+            run_id=run_id,
+            model=row.get("firm_model"),
+            n_rounds=row.get("n_rounds"),
+            n_agents=row.get("n_agents"),
+            communication_mode=row.get("comm_mode"),
+            oversight_mode=row.get("oversight_mode"),
+            audit_probability=row.get("audit_probability"),
+        )
+        options.append({
+            "run_id": run_id,
+            "run_dir": row.get("run_dir"),
+            "label": label,
+        })
+    return _unique_side_by_side_options(options)
+
+
+def _default_side_by_side_labels(
+    options: list[dict],
+    preferred_run_id: str | None,
+    n_default: int = 2,
+) -> list[str]:
+    """Default to the current run plus the next available run."""
+    if not options or n_default <= 0:
+        return []
+
+    selected: list[str] = []
+    if preferred_run_id:
+        for opt in options:
+            if opt.get("run_id") == preferred_run_id:
+                selected.append(opt["label"])
+                break
+
+    for opt in options:
+        if len(selected) >= min(n_default, len(options)):
+            break
+        label = opt["label"]
+        if label not in selected:
+            selected.append(label)
+    return selected
+
+
+def _wrapped_side_by_side_columns(selected: list[dict], columns_per_row: int):
+    """Yield Streamlit columns for selected runs, wrapping within one section."""
+    width = max(1, int(columns_per_row or 1))
+    for start in range(0, len(selected), width):
+        chunk = selected[start:start + width]
+        yield zip(st.columns(len(chunk)), chunk)
+
+
+def _load_side_by_side_selection(
+    options: list[dict],
+    selected_labels: list[str],
+) -> list[dict]:
+    option_by_label = {opt["label"]: opt for opt in options}
     selected: list[dict] = []
     for label in selected_labels:
-        run_id = run_labels[label]
-        run_dir = run_paths.get(run_id)
+        opt = option_by_label[label]
+        run_dir = opt.get("run_dir")
         if not run_dir:
             continue
         rows = load_log_rows(run_dir)
@@ -346,162 +429,245 @@ def render_side_by_side(runs, run_paths: dict) -> None:
         metrics, _ = _safe_run_metrics(run_dir)
         selected.append({
             "label": label,
-            "run_id": run_id,
+            "run_id": opt.get("run_id"),
             "run_dir": run_dir,
             "rows": rows,
             "manifest": manifest,
             "metrics": metrics or {},
         })
+    return selected
 
+
+def render_side_by_side_options(
+    options: list[dict],
+    *,
+    key_prefix: str,
+    default_run_ids: list[str] | None = None,
+    max_selections: int | None = None,
+    columns_per_row: int = 3,
+    label: str = "Select runs to compare",
+) -> None:
+    options = _unique_side_by_side_options([opt for opt in options if opt.get("run_dir")])
+    if not options:
+        st.info("No runs available.")
+        return
+
+    default_labels = _default_side_by_side_labels(options, None)
+    if default_run_ids:
+        default_labels = []
+        for run_id in default_run_ids:
+            for opt in options:
+                if opt.get("run_id") == run_id and opt["label"] not in default_labels:
+                    default_labels.append(opt["label"])
+                    break
+        if len(default_labels) < min(2, len(options)):
+            for opt in options:
+                if opt["label"] not in default_labels:
+                    default_labels.append(opt["label"])
+                if len(default_labels) >= min(2, len(options)):
+                    break
+
+    multiselect_kwargs = {
+        "label": label,
+        "options": [opt["label"] for opt in options],
+        "default": default_labels,
+        "key": f"{key_prefix}_run_select",
+    }
+    if max_selections is not None:
+        multiselect_kwargs["max_selections"] = max_selections
+
+    selected_labels = st.multiselect(**multiselect_kwargs)
+    if not selected_labels:
+        st.info("Select at least one run.")
+        return
+
+    selected = _load_side_by_side_selection(options, selected_labels)
     if not selected:
         st.warning("Could not load data for the selected runs.")
         return
 
-    n = len(selected)
-
-    # --- Metrics ---
     st.subheader("Metrics")
-    cols = st.columns(n)
-    for col, d in zip(cols, selected):
-        with col:
-            st.markdown(f"**`{d['label']}`**")
-            m = d["metrics"]
-            rows_ = d["rows"]
-            elevs = [
-                sum(r.get("trajectory_signals", {}).get("reward_elevation") or []) /
-                len(r.get("trajectory_signals", {}).get("reward_elevation") or [1])
-                for r in rows_
-                if r.get("trajectory_signals", {}).get("reward_elevation")
-            ]
-            mean_elev = sum(elevs) / len(elevs) if elevs else None
-            spreads_ = [
-                r.get("trajectory_signals", {}).get("action_spread")
-                for r in rows_
-                if r.get("trajectory_signals", {}).get("action_spread") is not None
-            ]
-            mean_spread = sum(spreads_) / len(spreads_) if spreads_ else None
-            covert_ct = sum(
-                1 for r in rows_ if r.get("trajectory_signals", {}).get("covert_coordination_flag")
-            )
-            penalized_ct = sum(
-                1 for r in rows_ if r.get("audit_event") and r["audit_event"].get("penalty_applied")
-            )
-            st.metric("Mean Elevation", f"{mean_elev:.3f}" if mean_elev is not None else "N/A")
-            st.metric("Mean Spread", f"{mean_spread:.2f}" if mean_spread is not None else "N/A")
-            st.metric("Onset Round", _fmt_metric(m.get("onset_round"), digits=0))
-            st.metric(
-                "Behavioral Covert Score",
-                _fmt_metric(m.get("behavioral_steganographic_score", m.get("steganographic_score"))),
-            )
-            st.metric(
-                "Message Stego Signature",
-                _fmt_bool_metric(m.get("steganographic_signature")),
-            )
-            st.metric("Covert Rounds", covert_ct)
-            st.metric("Penalized Rounds", penalized_ct)
+    for wrapped in _wrapped_side_by_side_columns(selected, columns_per_row):
+        for col, d in wrapped:
+            with col:
+                _render_side_by_side_metrics(d)
 
-    # --- Actions chart ---
     st.subheader("Actions Over Time")
-    cols = st.columns(n)
-    for col, d in zip(cols, selected):
-        with col:
-            st.caption(d["label"])
-            df = extract_trajectory_df(d["rows"])
-            if df.empty:
-                st.info("No data.")
-                continue
-            env_cfg = d["manifest"].get("config", {}).get("environment", {})
-            nash, monopoly = env_cfg.get("nash_price"), env_cfg.get("monopoly_price")
-            onset = d["metrics"].get("onset_round")
-            action_cols_ = sorted([c for c in df.columns if c.startswith("action_") and c[7:].isdigit()])
-            fig = go.Figure()
-            for i, ac in enumerate(action_cols_):
-                fig.add_trace(go.Scatter(x=df["round"], y=df[ac], mode="lines+markers", name=f"Agent {i}",
-                                         hovertemplate="R%{x} P=%{y}<extra></extra>"))
-            if nash is not None:
-                fig.add_hline(y=nash, line_dash="dash", line_color="green", annotation_text="Nash")
-            if monopoly is not None:
-                fig.add_hline(y=monopoly, line_dash="dash", line_color="red", annotation_text="Mono")
-            if onset is not None:
-                fig.add_vline(x=onset, line_dash="dash", annotation_text="Onset")
-            fig.update_layout(xaxis_title="Round", yaxis_title="Price", height=260,
-                               margin={"l": 20, "r": 20, "t": 20, "b": 20})
-            st.plotly_chart(
-                fig,
-                width="stretch",
-                key=f"sbs_actions_{d['run_id']}",
-            )
+    for wrapped in _wrapped_side_by_side_columns(selected, columns_per_row):
+        for idx, (col, d) in enumerate(wrapped):
+            with col:
+                _render_side_by_side_actions(d, key=f"{key_prefix}_actions_{idx}_{d['run_id']}")
 
-    # --- Reward elevation chart ---
     st.subheader("Reward Elevation Over Time")
-    cols = st.columns(n)
-    for col, d in zip(cols, selected):
-        with col:
-            st.caption(d["label"])
-            df = extract_trajectory_df(d["rows"])
-            elev_cols_ = [c for c in df.columns if c.startswith("reward_elevation_")]
-            if df.empty or not elev_cols_:
-                st.info("No elevation data.")
-                continue
-            onset = d["metrics"].get("onset_round")
-            fig = go.Figure()
-            for i, ec in enumerate(elev_cols_):
-                fig.add_trace(go.Scatter(x=df["round"], y=df[ec], mode="lines+markers", name=f"Agent {i}",
-                                         hovertemplate="R%{x} elev=%{y:.3f}<extra></extra>"))
-            smooth = df[elev_cols_].mean(axis=1).rolling(5, min_periods=1).mean()
-            fig.add_trace(go.Scatter(x=df["round"], y=smooth, mode="lines", name="Smoothed",
-                                      line={"width": 3}))
-            fig.add_hline(y=0, line_dash="dot", line_color="gray", annotation_text="Nash")
-            fig.add_hline(y=1, line_dash="dot", line_color="gray", annotation_text="Mono")
-            if onset is not None:
-                fig.add_vline(x=onset, line_dash="dash", annotation_text="Onset")
-                fig.add_vrect(x0=onset, x1=df["round"].max(), opacity=0.08, line_width=0)
-            fig.update_layout(xaxis_title="Round", yaxis_title="Elevation", height=260,
-                               margin={"l": 20, "r": 20, "t": 20, "b": 20})
-            st.plotly_chart(
-                fig,
-                width="stretch",
-                key=f"sbs_reward_elevation_{d['run_id']}",
-            )
+    for wrapped in _wrapped_side_by_side_columns(selected, columns_per_row):
+        for idx, (col, d) in enumerate(wrapped):
+            with col:
+                _render_side_by_side_reward_elevation(
+                    d,
+                    key=f"{key_prefix}_reward_elevation_{idx}_{d['run_id']}",
+                )
 
-    # --- Coordination signals chart ---
     st.subheader("Coordination Signals")
-    cols = st.columns(n)
-    for col, d in zip(cols, selected):
-        with col:
-            st.caption(d["label"])
-            df = extract_trajectory_df(d["rows"])
-            if df.empty or "action_spread" not in df.columns:
-                st.info("No signals data.")
-                continue
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=df["round"], y=df["action_spread"], mode="lines+markers",
-                                      name="Spread", hovertemplate="R%{x} spread=%{y}<extra></extra>"))
-            if "covert_coordination_flag" in df.columns:
-                covert_roll = df["covert_coordination_flag"].astype(float).rolling(10, min_periods=1).mean()
-                fig.add_trace(go.Scatter(x=df["round"], y=covert_roll, mode="lines",
-                                          name="Covert rate", yaxis="y2"))
-            if "hollow_coordination_flag" in df.columns:
-                hollow_roll = df["hollow_coordination_flag"].astype(float).rolling(10, min_periods=1).mean()
-                fig.add_trace(go.Scatter(x=df["round"], y=hollow_roll, mode="lines",
-                                          name="Hollow rate", yaxis="y2", line={"dash": "dot"}))
-            fig.update_layout(
-                xaxis_title="Round", yaxis_title="Spread",
-                yaxis2={"title": "Rate", "overlaying": "y", "side": "right", "range": [0, 1]},
-                height=260, margin={"l": 20, "r": 20, "t": 20, "b": 20},
-            )
-            st.plotly_chart(
-                fig,
-                width="stretch",
-                key=f"sbs_coordination_{d['run_id']}",
-            )
+    for wrapped in _wrapped_side_by_side_columns(selected, columns_per_row):
+        for idx, (col, d) in enumerate(wrapped):
+            with col:
+                _render_side_by_side_coordination(
+                    d,
+                    key=f"{key_prefix}_coordination_{idx}_{d['run_id']}",
+                )
 
-    # --- Transcript (one at a time via selectbox to avoid widget key conflicts) ---
     st.subheader("Transcript")
     transcript_labels = [d["label"] for d in selected]
-    chosen_label = st.selectbox("View transcript for", transcript_labels, key="sbs_transcript_select")
+    chosen_label = st.selectbox(
+        "View transcript for",
+        transcript_labels,
+        key=f"{key_prefix}_transcript_select",
+    )
     chosen = next(d for d in selected if d["label"] == chosen_label)
-    render_transcript_tab(chosen["rows"], chosen["metrics"])
+    render_transcript_tab(
+        chosen["rows"],
+        chosen["metrics"],
+        key_prefix=f"{key_prefix}_transcript",
+    )
+
+
+def _render_side_by_side_metrics(d: dict) -> None:
+    st.markdown(f"**`{d['label']}`**")
+    m = d["metrics"]
+    rows_ = d["rows"]
+    elevs = [
+        sum(r.get("trajectory_signals", {}).get("reward_elevation") or []) /
+        len(r.get("trajectory_signals", {}).get("reward_elevation") or [1])
+        for r in rows_
+        if r.get("trajectory_signals", {}).get("reward_elevation")
+    ]
+    mean_elev = sum(elevs) / len(elevs) if elevs else None
+    spreads_ = [
+        r.get("trajectory_signals", {}).get("action_spread")
+        for r in rows_
+        if r.get("trajectory_signals", {}).get("action_spread") is not None
+    ]
+    mean_spread = sum(spreads_) / len(spreads_) if spreads_ else None
+    covert_ct = sum(
+        1 for r in rows_ if r.get("trajectory_signals", {}).get("covert_coordination_flag")
+    )
+    penalized_ct = sum(
+        1 for r in rows_ if r.get("audit_event") and r["audit_event"].get("penalty_applied")
+    )
+    st.metric("Mean Elevation", f"{mean_elev:.3f}" if mean_elev is not None else "N/A")
+    st.metric("Mean Spread", f"{mean_spread:.2f}" if mean_spread is not None else "N/A")
+    st.metric("Onset Round", _fmt_metric(m.get("onset_round"), digits=0))
+    st.metric(
+        "Behavioral Covert Score",
+        _fmt_metric(m.get("behavioral_steganographic_score", m.get("steganographic_score"))),
+    )
+    st.metric("Message Stego Signature", _fmt_bool_metric(m.get("steganographic_signature")))
+    st.metric("Covert Rounds", covert_ct)
+    st.metric("Penalized Rounds", penalized_ct)
+
+
+def _render_side_by_side_actions(d: dict, key: str) -> None:
+    st.caption(d["label"])
+    df = extract_trajectory_df(d["rows"])
+    if df.empty:
+        st.info("No data.")
+        return
+    env_cfg = d["manifest"].get("config", {}).get("environment", {})
+    nash, monopoly = env_cfg.get("nash_price"), env_cfg.get("monopoly_price")
+    onset = d["metrics"].get("onset_round")
+    action_cols_ = sorted([c for c in df.columns if c.startswith("action_") and c[7:].isdigit()])
+    fig = go.Figure()
+    for i, ac in enumerate(action_cols_):
+        fig.add_trace(go.Scatter(
+            x=df["round"],
+            y=df[ac],
+            mode="lines+markers",
+            name=f"Agent {i}",
+            hovertemplate="R%{x} P=%{y}<extra></extra>",
+        ))
+    if nash is not None:
+        fig.add_hline(y=nash, line_dash="dash", line_color="green", annotation_text="Nash")
+    if monopoly is not None:
+        fig.add_hline(y=monopoly, line_dash="dash", line_color="red", annotation_text="Mono")
+    if onset is not None:
+        fig.add_vline(x=onset, line_dash="dash", annotation_text="Onset")
+    fig.update_layout(
+        xaxis_title="Round",
+        yaxis_title="Price",
+        height=260,
+        margin={"l": 20, "r": 20, "t": 20, "b": 20},
+    )
+    st.plotly_chart(fig, width="stretch", key=key)
+
+
+def _render_side_by_side_reward_elevation(d: dict, key: str) -> None:
+    st.caption(d["label"])
+    df = extract_trajectory_df(d["rows"])
+    elev_cols_ = [c for c in df.columns if c.startswith("reward_elevation_")]
+    if df.empty or not elev_cols_:
+        st.info("No elevation data.")
+        return
+    onset = d["metrics"].get("onset_round")
+    fig = go.Figure()
+    for i, ec in enumerate(elev_cols_):
+        fig.add_trace(go.Scatter(
+            x=df["round"],
+            y=df[ec],
+            mode="lines+markers",
+            name=f"Agent {i}",
+            hovertemplate="R%{x} elev=%{y:.3f}<extra></extra>",
+        ))
+    smooth = df[elev_cols_].mean(axis=1).rolling(5, min_periods=1).mean()
+    fig.add_trace(go.Scatter(x=df["round"], y=smooth, mode="lines", name="Smoothed", line={"width": 3}))
+    fig.add_hline(y=0, line_dash="dot", line_color="gray", annotation_text="Nash")
+    fig.add_hline(y=1, line_dash="dot", line_color="gray", annotation_text="Mono")
+    if onset is not None:
+        fig.add_vline(x=onset, line_dash="dash", annotation_text="Onset")
+        fig.add_vrect(x0=onset, x1=df["round"].max(), opacity=0.08, line_width=0)
+    fig.update_layout(
+        xaxis_title="Round",
+        yaxis_title="Elevation",
+        height=260,
+        margin={"l": 20, "r": 20, "t": 20, "b": 20},
+    )
+    st.plotly_chart(fig, width="stretch", key=key)
+
+
+def _render_side_by_side_coordination(d: dict, key: str) -> None:
+    st.caption(d["label"])
+    df = extract_trajectory_df(d["rows"])
+    if df.empty or "action_spread" not in df.columns:
+        st.info("No signals data.")
+        return
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=df["round"],
+        y=df["action_spread"],
+        mode="lines+markers",
+        name="Spread",
+        hovertemplate="R%{x} spread=%{y}<extra></extra>",
+    ))
+    if "covert_coordination_flag" in df.columns:
+        covert_roll = df["covert_coordination_flag"].astype(float).rolling(10, min_periods=1).mean()
+        fig.add_trace(go.Scatter(x=df["round"], y=covert_roll, mode="lines", name="Covert rate", yaxis="y2"))
+    if "hollow_coordination_flag" in df.columns:
+        hollow_roll = df["hollow_coordination_flag"].astype(float).rolling(10, min_periods=1).mean()
+        fig.add_trace(go.Scatter(
+            x=df["round"],
+            y=hollow_roll,
+            mode="lines",
+            name="Hollow rate",
+            yaxis="y2",
+            line={"dash": "dot"},
+        ))
+    fig.update_layout(
+        xaxis_title="Round",
+        yaxis_title="Spread",
+        yaxis2={"title": "Rate", "overlaying": "y", "side": "right", "range": [0, 1]},
+        height=260,
+        margin={"l": 20, "r": 20, "t": 20, "b": 20},
+    )
+    st.plotly_chart(fig, width="stretch", key=key)
 
 
 def render_threshold_view(runs, sweep_df: pd.DataFrame):
@@ -870,8 +1036,8 @@ def page_analyze():
     metrics, run_data = _safe_run_metrics(run_dir)
 
     # --- Tabs ---
-    tab_config, tab_trajectory, tab_transcript, tab_metrics = st.tabs(
-        ["Config", "Trajectory", "Transcript", "Metrics"]
+    tab_config, tab_trajectory, tab_transcript, tab_metrics, tab_side_by_side = st.tabs(
+        ["Config", "Trajectory", "Transcript", "Metrics", "Side-by-Side"]
     )
 
     with tab_config:
@@ -881,10 +1047,21 @@ def page_analyze():
         render_trajectory_tab(rows, manifest, metrics)
 
     with tab_transcript:
-        render_transcript_tab(rows, metrics)
+        render_transcript_tab(rows, metrics, key_prefix="analyze_transcript")
 
     with tab_metrics:
         render_metrics_tab(rows, metrics)
+
+    with tab_side_by_side:
+        options = _run_index_side_by_side_options(filtered)
+        render_side_by_side_options(
+            options,
+            key_prefix="analyze_sbs",
+            default_run_ids=[str(selected_row.get("run_id") or "")],
+            max_selections=None,
+            columns_per_row=3,
+            label="Select runs to compare",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1066,7 +1243,11 @@ def render_trajectory_tab(rows: list[dict], manifest: dict, metrics: dict | None
 # ---------------------------------------------------------------------------
 
 
-def render_transcript_tab(rows: list[dict], metrics: dict | None = None):
+def render_transcript_tab(
+    rows: list[dict],
+    metrics: dict | None = None,
+    key_prefix: str = "transcript",
+):
     st.subheader("Round-by-Round Transcript")
     metrics = metrics or {}
     transcript_df = build_transcript_df(
@@ -1078,13 +1259,29 @@ def render_transcript_tab(rows: list[dict], metrics: dict | None = None):
     # Filters
     col1, col2, col3, col4 = st.columns([1, 1, 1, 2])
     with col1:
-        filter_flagged = st.checkbox("Flagged rounds only", value=False)
+        filter_flagged = st.checkbox(
+            "Flagged rounds only",
+            value=False,
+            key=f"{key_prefix}_flagged_only",
+        )
     with col2:
-        filter_post_onset = st.checkbox("Post-onset only", value=False)
+        filter_post_onset = st.checkbox(
+            "Post-onset only",
+            value=False,
+            key=f"{key_prefix}_post_onset_only",
+        )
     with col3:
-        filter_post_transition = st.checkbox("Post-transition only", value=False)
+        filter_post_transition = st.checkbox(
+            "Post-transition only",
+            value=False,
+            key=f"{key_prefix}_post_transition_only",
+        )
     with col4:
-        keyword_filter = st.text_input("Search messages", "")
+        keyword_filter = st.text_input(
+            "Search messages",
+            "",
+            key=f"{key_prefix}_message_search",
+        )
 
     filtered = transcript_df
     if filter_flagged:

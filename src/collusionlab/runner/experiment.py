@@ -415,7 +415,11 @@ class Experiment:
         replies_by_agent = kwargs.pop("replies_by_agent", None)
         if replies_by_agent is not None and "replies" not in kwargs:
             kwargs["replies"] = list(replies_by_agent[agent_id])
-        if agent_cfg.backend == "openai" and "seed" not in kwargs:
+        if (
+            agent_cfg.backend == "openai"
+            and agent_cfg.openai_seed_mode == "environment"
+            and "seed" not in kwargs
+        ):
             kwargs["seed"] = agent_seed
         return get_model_client(
             agent_cfg.backend, model_name=agent_cfg.model, **kwargs
@@ -596,11 +600,17 @@ class Experiment:
         total_cost = 0.0
         total_fallbacks = 0
         for agent_id, (agent, client) in enumerate(zip(agents, model_clients)):
+            api_seed = None
+            if cfg.agents.backend == "openai":
+                api_seed = cfg.agents.extra.get("seed")
+                if api_seed is None and cfg.agents.openai_seed_mode == "environment":
+                    api_seed = agent_seeds[agent_id]
             per_agent.append({
                 "agent_id": agent_id,
                 "backend": cfg.agents.backend,
                 "model": client.model_name,
                 "agent_seed": agent_seeds[agent_id],
+                "api_seed": api_seed,
                 "input_tokens": client.input_tokens,
                 "output_tokens": client.output_tokens,
                 "cost_estimate_usd": client.cost_estimate(),

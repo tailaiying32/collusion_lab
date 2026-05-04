@@ -358,7 +358,14 @@ def test_openai_payload_params_by_model_family():
         kwargs_reasoning = instance.chat.completions.create.call_args.kwargs
         assert "temperature" not in kwargs_reasoning
         assert "max_completion_tokens" in kwargs_reasoning
+        assert kwargs_reasoning["max_completion_tokens"] == 456
         assert "max_tokens" not in kwargs_reasoning
+
+        c_reasoning_default = OpenAIModelClient(model_name="gpt-5-mini", api_key="sk-test")
+        c_reasoning_default.generate([{"role": "user", "content": "hi"}])
+        kwargs_reasoning_default = instance.chat.completions.create.call_args.kwargs
+        assert "temperature" not in kwargs_reasoning_default
+        assert kwargs_reasoning_default["max_completion_tokens"] >= 2048
 
 
 def test_anthropic_client_instantiates_and_returns_string_with_mock():

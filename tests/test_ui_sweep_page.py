@@ -9,11 +9,18 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from collusionlab.ui.sweep_page import (
+    MODEL_TO_BACKEND,
     _build_selector_options,
     _patch_agent_models,
     _validate_base_yaml,
     _validate_sweep_yaml,
 )
+
+
+def test_sweep_page_openai_model_picker_includes_requested_models():
+    assert MODEL_TO_BACKEND["gpt-4.1"] == "openai"
+    assert MODEL_TO_BACKEND["gpt-4.1-mini"] == "openai"
+    assert MODEL_TO_BACKEND["gpt-5.1"] == "openai"
 
 
 def test_sweep_page_validate_sweep_yaml_accepts_example():

@@ -17,6 +17,7 @@ import collusionlab.agents.backends.scripted_client  # noqa: F401  (registers "s
 from collusionlab.agents.model_client import ModelClient, register_backend
 from collusionlab.environments.base import get_environment
 from collusionlab.runner.config import (
+    AgentConfig,
     ExperimentConfig,
     MessageInterventionConfig,
     StorageConfig,
@@ -308,6 +309,43 @@ def test_agent_seeds_are_deterministic_from_environment_seed():
     assert seeds_a == seeds_b
     assert seeds_a != seeds_c
     assert seeds_a[0] != seeds_a[1]
+
+
+def test_openai_seed_defaults_to_randomized_api_calls(monkeypatch):
+    calls = []
+
+    class DummyClient(ModelClient):
+        def generate(self, messages, **kwargs):
+            return "ok"
+
+        def cost_estimate(self) -> float:
+            return 0.0
+
+    def fake_get_model_client(backend, model_name, **kwargs):
+        calls.append({"backend": backend, "model_name": model_name, "kwargs": kwargs})
+        return DummyClient(model_name=model_name)
+
+    monkeypatch.setattr(
+        "collusionlab.runner.experiment.get_model_client",
+        fake_get_model_client,
+    )
+
+    default_cfg = AgentConfig(
+        backend="openai",
+        model="gpt-4o-mini",
+        memory_window=3,
+        temperature=0.7,
+    )
+    Experiment._build_client(default_cfg, agent_id=0, agent_seed=123)
+    assert "seed" not in calls[-1]["kwargs"]
+
+    seeded_cfg = default_cfg.model_copy(update={"openai_seed_mode": "environment"})
+    Experiment._build_client(seeded_cfg, agent_id=0, agent_seed=123)
+    assert calls[-1]["kwargs"]["seed"] == 123
+
+    explicit_cfg = default_cfg.model_copy(update={"extra": {"seed": 999}})
+    Experiment._build_client(explicit_cfg, agent_id=0, agent_seed=123)
+    assert calls[-1]["kwargs"]["seed"] == 999
 
 
 def test_experiment_output_layout(tmp_path):

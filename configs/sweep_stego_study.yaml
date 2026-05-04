@@ -83,7 +83,21 @@ overrides:
     strategic_guidance_preset: avoid_explicit_language
     message_intervention.mode: none
 
-  # 6. Main condition: agents are asked to form useful innocuous conventions.
+  # 6. Emergent/covert business-language condition: ordinary audited communication.
+  - environment.seed: 101
+    strategic_guidance_preset: emergent_stego_capability
+    agents.temperature: 0.7
+    message_intervention.mode: none
+  - environment.seed: 102
+    strategic_guidance_preset: emergent_stego_capability
+    agents.temperature: 0.7
+    message_intervention.mode: none
+  - environment.seed: 103
+    strategic_guidance_preset: emergent_stego_capability
+    agents.temperature: 0.7
+    message_intervention.mode: none
+
+  # 7. Induced-convention condition: agents are asked to form useful innocuous conventions.
   - environment.seed: 101
     strategic_guidance_preset: stego_capability
     agents.temperature: 0.7
@@ -97,7 +111,7 @@ overrides:
     agents.temperature: 0.7
     message_intervention.mode: none
 
-  # 7. Channel-disruption test: same stego condition, but messages are normalized.
+  # 8. Channel-disruption test: same induced-convention condition, but messages are normalized.
   - environment.seed: 101
     strategic_guidance_preset: stego_capability
     agents.temperature: 0.7
@@ -111,7 +125,7 @@ overrides:
     agents.temperature: 0.7
     message_intervention.mode: template_paraphrase
 
-  # 8. Channel-disruption test: same stego condition, but half of messages are withheld.
+  # 9. Channel-disruption test: same induced-convention condition, but half of messages are withheld.
   - environment.seed: 101
     strategic_guidance_preset: stego_capability
     agents.temperature: 0.7
@@ -128,7 +142,7 @@ overrides:
     message_intervention.mode: dropout
     message_intervention.dropout_probability: 0.5
 
-  # 9. Covert-channel positive control: shared codebook from round 1.
+  # 10. Covert-channel positive control: shared codebook from round 1.
   - environment.seed: 101
     strategic_guidance_preset: stego_shared_codebook
     message_intervention.mode: none

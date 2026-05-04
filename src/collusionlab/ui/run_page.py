@@ -45,7 +45,7 @@ FILE_SELECT_KEY = "run_page_file_select"
 CUSTOM_LABEL = "(custom)"
 RECENT_RUN_CONFIG_KEY = "run_page_last_config"
 BACKEND_MODELS: dict[str, list[str]] = {
-    "openai": ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-5-mini"],
+    "openai": ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1", "gpt-5-mini", "gpt-5.1"],
     "anthropic": ["claude-haiku-4-5-20251001", "claude-sonnet-4-6", "claude-opus-4-7"],
     "deepseek": ["deepseek-v4-flash"],
 }
@@ -58,6 +58,7 @@ _COMM_OPTIONS = ["none", "public", "private"]
 _AUDIT_OPTIONS = ["none", "audit-penalty"]
 GUIDANCE_DISABLED_LABEL = "Off"
 GUIDANCE_LABEL_TO_PRESET: dict[str, str] = {
+    "Emergent stego capability": "emergent_stego_capability",
     "Stego capability": "stego_capability",
     "Stego shared codebook": "stego_shared_codebook",
     "Avoid explicit language": "avoid_explicit_language",

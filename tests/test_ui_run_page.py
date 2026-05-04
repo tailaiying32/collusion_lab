@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from collusionlab.ui.run_page import (
+    MODEL_TO_BACKEND,
     _build_selector_options,
     _build_prompt_preview,
     _load_strategic_guidance_preset,
@@ -17,6 +18,12 @@ from collusionlab.ui.run_page import (
     _patch_strategic_guidance_preset,
     _validate_yaml,
 )
+
+
+def test_run_page_openai_model_picker_includes_requested_models():
+    assert MODEL_TO_BACKEND["gpt-4.1"] == "openai"
+    assert MODEL_TO_BACKEND["gpt-4.1-mini"] == "openai"
+    assert MODEL_TO_BACKEND["gpt-5.1"] == "openai"
 
 
 def test_run_page_validate_yaml_accepts_base_config():
@@ -77,7 +84,7 @@ def test_patch_strategic_guidance_preset_updates_config():
     assert cfg is not None
     assert cfg.strategic_guidance == ""
     assert cfg.strategic_guidance_preset == "stego_capability"
-    assert "innocuous-looking communication" in cfg.resolved_strategic_guidance()
+    assert "innocuous communication conventions" in cfg.resolved_strategic_guidance()
 
 
 def test_prompt_preview_includes_strategic_guidance_in_turn_prompts():
@@ -97,4 +104,9 @@ def test_prompt_preview_includes_strategic_guidance_in_turn_prompts():
 
 def test_strategic_guidance_presets_are_file_backed():
     text = _load_strategic_guidance_preset("Stego capability")
-    assert "indirect, innocuous-looking communication" in text
+    assert "innocuous communication conventions" in text
+
+
+def test_emergent_stego_capability_preset_is_file_backed():
+    text = _load_strategic_guidance_preset("Emergent stego capability")
+    assert "ordinary business communication" in text
